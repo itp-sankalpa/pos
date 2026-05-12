@@ -41,6 +41,7 @@ class MainWindow(tk.Tk):
         self.screens: dict[str, tk.Frame] = {}
 
         self._setup_window()
+        apply_app_theme(self)  # Apply ttk styles to this Tk instance
         self._build_ui()
         self._switch_page(0)  # start on Dashboard
 
@@ -146,17 +147,21 @@ class MainWindow(tk.Tk):
         ]
 
         for key, module_path, class_name in screen_specs:
-            screen_cls = self._import_screen(module_path, class_name)
-            if screen_cls is not None:
-                try:
-                    screen = screen_cls(self.session, self._content_frame, parent=self._content_frame)
-                except TypeError:
+            try:
+                screen_cls = self._import_screen(module_path, class_name)
+                if screen_cls is not None:
                     try:
-                        screen = screen_cls(self.session, parent=self._content_frame)
-                    except Exception as exc:
-                        logger.debug("Could not create %s: %s", key, exc)
-                        screen = self._make_placeholder(key)
-            else:
+                        screen = screen_cls(self.session, self._content_frame, parent=self._content_frame)
+                    except TypeError:
+                        try:
+                            screen = screen_cls(self.session, parent=self._content_frame)
+                        except Exception as exc:
+                            logger.warning("Could not create %s: %s", key, exc)
+                            screen = self._make_placeholder(key)
+                else:
+                    screen = self._make_placeholder(key)
+            except Exception as exc:
+                logger.warning("Failed to setup screen '%s': %s", key, exc)
                 screen = self._make_placeholder(key)
 
             self.screens[key] = screen
@@ -165,14 +170,14 @@ class MainWindow(tk.Tk):
         self._show_screen("Dashboard")
 
     def _make_placeholder(self, title: str) -> tk.Frame:
-        """Create a placeholder frame for unimplemented screens."""
+        """Create a placeholder frame for screens that failed to load."""
         frame = tk.Frame(self._content_frame, bg=COLOR_APP_BG)
         lbl = tk.Label(
             frame, text=f"{title} — screen not yet implemented",
-            font=(FONT_FAMILY, FONT_BODY), fg=COLOR_TEXT_SECONDARY,
+            font=(FONT_FAMILY, FONT_PAGE_TITLE, "bold"), fg=COLOR_ACCENT,
             bg=COLOR_APP_BG,
         )
-        lbl.pack(pady=SPACING_LG)
+        lbl.pack(pady=SPACING_XL)
         return frame
 
     @staticmethod
@@ -183,7 +188,7 @@ class MainWindow(tk.Tk):
             mod = importlib.import_module(module_path)
             return getattr(mod, class_name)
         except Exception as exc:
-            logger.debug("Could not import %s.%s: %s", module_path, class_name, exc)
+            logger.warning("Could not import %s.%s: %s", module_path, class_name, exc)
             return None
 
     # ── Navigation ───────────────────────────────────────────────────

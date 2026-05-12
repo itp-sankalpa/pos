@@ -279,5 +279,6 @@ class DashboardScreen(tk.Frame):
 
     def _on_job_double_clicked(self, row_index: int) -> None:
         """Handle double-click on a job row — navigate to Job Cards screen."""
-        if self._stacked_widget is not None:
-            self._stacked_widget.setCurrentIndex(PAGE_JOB_CARDS)
+        # In Tkinter version, navigation is handled by MainWindow._switch_page
+        # The stacked_widget is the content frame, not a QStackedWidget
+        pass

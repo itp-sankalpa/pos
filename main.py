@@ -52,12 +52,13 @@ def main():
         auth.set_current_user(user)
         logger.info(f"User logged in: {user.username} (role: {user.role})")
 
-        # Open main window
+        # Open main window (apply_app_theme is called inside MainWindow.__init__)
         main_window = MainWindow(session)
         main_window.set_current_user(user)
         main_window.mainloop()
 
     login_screen = LoginScreen(on_login_success=on_login_success)
+    apply_app_theme(login_screen)  # Apply theme to the login window
     login_screen.mainloop()
 
 
