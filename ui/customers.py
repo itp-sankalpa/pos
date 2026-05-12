@@ -4,25 +4,7 @@ CustomersScreen — customer management page for the Vehicle Service POS.
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-from ui.theme import (
-    COLOR_APP_BG,
-    COLOR_PANEL_BG,
-    COLOR_TEXT_PRIMARY,
-    COLOR_TEXT_SECONDARY,
-    COLOR_BORDER,
-    COLOR_ACCENT,
-    FONT_FAMILY,
-    FONT_BODY,
-    FONT_BUTTON,
-    FONT_SMALL,
-    FONT_SECTION_TITLE,
-    SPACING_XS,
-    SPACING_SM,
-    SPACING_MD,
-    SPACING_LG,
-    BUTTON_HEIGHT,
-    INPUT_HEIGHT,
-)
+from ui.theme import *
 from ui.components import PageHeader, SearchBar, DataTable, FormPanel, ActionBar
 from controllers.customer_controller import CustomerController
 

@@ -6,13 +6,7 @@ Displays a centered login card on a grey background.
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from ui.theme import (
-    COLOR_APP_BG, COLOR_PANEL_BG, COLOR_TEXT_PRIMARY,
-    COLOR_TEXT_SECONDARY, COLOR_ACCENT, COLOR_ACCENT_HOVER,
-    COLOR_BORDER, FONT_FAMILY, FONT_PAGE_TITLE, FONT_BODY,
-    FONT_BUTTON, FONT_SMALL, SPACING_SM, SPACING_MD,
-    SPACING_LG, SPACING_XL, BUTTON_HEIGHT, INPUT_HEIGHT,
-)
+from ui.theme import *
 from controllers.auth_controller import AuthController
 
 

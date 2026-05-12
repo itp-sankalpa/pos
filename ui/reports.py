@@ -9,14 +9,7 @@ from datetime import date, datetime
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
-from ui.theme import (
-    COLOR_APP_BG, COLOR_PANEL_BG, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY,
-    COLOR_BORDER, COLOR_ACCENT, COLOR_SUCCESS, COLOR_WARNING, COLOR_ERROR,
-    COLOR_INFO, FONT_FAMILY, FONT_PAGE_TITLE, FONT_SECTION_TITLE,
-    FONT_BODY, FONT_BUTTON, FONT_SMALL, FONT_MONO,
-    SPACING_XS, SPACING_SM, SPACING_MD, SPACING_LG,
-    BUTTON_HEIGHT, INPUT_HEIGHT, status_badge_colors,
-)
+from ui.theme import *
 from ui.components import PageHeader, DataTable, SummaryCard
 from controllers.report_controller import ReportController
 from config import cents_to_display

@@ -6,26 +6,7 @@ Displays summary cards, recent job cards, and quick revenue stats.
 import tkinter as tk
 from tkinter import ttk
 
-from ui.theme import (
-    COLOR_APP_BG,
-    COLOR_PANEL_BG,
-    COLOR_TEXT_PRIMARY,
-    COLOR_TEXT_SECONDARY,
-    COLOR_BORDER,
-    COLOR_ACCENT,
-    COLOR_SUCCESS,
-    COLOR_WARNING,
-    COLOR_ERROR,
-    COLOR_INFO,
-    FONT_FAMILY,
-    FONT_SECTION_TITLE,
-    FONT_BODY,
-    FONT_SMALL,
-    SPACING_XS,
-    SPACING_SM,
-    SPACING_MD,
-    SPACING_LG,
-)
+from ui.theme import *
 from ui.components import PageHeader, SummaryCard, DataTable, StatusBadge
 from controllers.dashboard_controller import DashboardController
 from config import cents_to_display

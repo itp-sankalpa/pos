@@ -9,18 +9,7 @@ import logging
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from ui.theme import (
-    COLOR_APP_BG, COLOR_PANEL_BG, COLOR_TEXT_PRIMARY,
-    COLOR_TEXT_SECONDARY, COLOR_BORDER, COLOR_ACCENT,
-    COLOR_SIDEBAR_BG, COLOR_SIDEBAR_ACTIVE, COLOR_SIDEBAR_HOVER,
-    COLOR_SIDEBAR_TEXT, COLOR_SIDEBAR_ACTIVE_TEXT,
-    FONT_FAMILY, FONT_BODY, FONT_SMALL, FONT_BUTTON,
-    SPACING_XS, SPACING_SM, SPACING_MD, SPACING_LG,
-    SIDEBAR_WIDTH, SIDEBAR_ICON_SIZE,
-    DEFAULT_WINDOW_W, DEFAULT_WINDOW_H,
-    MIN_WINDOW_W, MIN_WINDOW_H,
-    BUTTON_HEIGHT, INPUT_HEIGHT,
-)
+from ui.theme import *
 from controllers.auth_controller import AuthController
 
 logger = logging.getLogger(__name__)
