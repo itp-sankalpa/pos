@@ -1,18 +1,13 @@
 """
-Main application window for the Vehicle Service Center POS.
+Main application window for the Vehicle Service Center POS (Tkinter version).
 
-Contains the sidebar navigation and a QStackedWidget that hosts all screen pages.
+Contains the sidebar navigation and a frame container that hosts all screen pages.
 """
 
 import logging
 
-from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QStackedWidget, QFrame,
-    QSizePolicy, QMessageBox, QSpacerItem,
-)
-from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QFont
+import tkinter as tk
+from tkinter import ttk, messagebox
 
 from ui.theme import (
     COLOR_APP_BG, COLOR_PANEL_BG, COLOR_TEXT_PRIMARY,
@@ -31,248 +26,124 @@ from controllers.auth_controller import AuthController
 logger = logging.getLogger(__name__)
 
 # ── Navigation definition (order matters) ────────────────────────────
-# (label, icon_unicode, module_path, class_name)
+# (label, icon_char, module_path, class_name)
 _NAV_ITEMS = [
-    ("Dashboard",  "\u2302", "ui.dashboard",   "DashboardScreen"),
-    ("Customers",  "\u263A", "ui.customers",   "CustomersScreen"),
-    ("Vehicles",   "\u26FD", "ui.vehicles",     "VehiclesScreen"),
-    ("Job Cards",  "\u2630", "ui.job_cards",    "JobCardsScreen"),
-    ("Billing",    "\u26A1", "ui.billing",      "BillingScreen"),
-    ("Inventory",  "\u2637", "ui.inventory",    "InventoryScreen"),
-    ("Reports",    "\u2635", "ui.reports",      "ReportsScreen"),
-    ("Staff",      "\u2699", "ui.staff",        "StaffScreen"),
-    ("Settings",   "\u2699", "ui.settings",     "SettingsScreen"),
-    ("Logout",     "\u23FB", None,              None),  # special handler
+    ("Dashboard",  "⌂", "ui.dashboard",   "DashboardScreen"),
+    ("Customers",  "☺", "ui.customers",   "CustomersScreen"),
+    ("Vehicles",   "⛽", "ui.vehicles",     "VehiclesScreen"),
+    ("Job Cards",  "☰", "ui.job_cards",    "JobCardsScreen"),
+    ("Billing",    "⚡", "ui.billing",      "BillingScreen"),
+    ("Inventory",  "⛭", "ui.inventory",    "InventoryScreen"),
+    ("Reports",    "⚶", "ui.reports",      "ReportsScreen"),
+    ("Staff",      "⚙", "ui.staff",        "StaffScreen"),
+    ("Settings",   "⚙", "ui.settings",     "SettingsScreen"),
+    ("Logout",     "⏻", None,              None),  # special handler
 ]
 
 
-class _PlaceholderScreen(QWidget):
-    """Minimal placeholder shown when a real screen module is not yet available."""
-
-    def __init__(self, title: str, session, stacked_widget, parent=None):
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(SPACING_LG, SPACING_LG, SPACING_LG, SPACING_LG)
-        lbl = QLabel(f"{title} — screen not yet implemented")
-        lbl.setStyleSheet(
-            f"font-size: {FONT_BODY}px; color: {COLOR_TEXT_SECONDARY};"
-        )
-        layout.addWidget(lbl)
-        layout.addStretch()
-
-
-def _import_screen(module_path: str, class_name: str):
-    """Dynamically import a screen class; return None on failure."""
-    try:
-        import importlib
-        mod = importlib.import_module(module_path)
-        return getattr(mod, class_name)
-    except Exception as exc:
-        logger.debug("Could not import %s.%s: %s", module_path, class_name, exc)
-        return None
-
-
-# ─── Sidebar Navigation Button ───────────────────────────────────────
-
-class _NavButton(QPushButton):
-    """A single sidebar navigation button with active-state styling."""
-
-    def __init__(self, label: str, icon_char: str, index: int, parent=None):
-        super().__init__(parent)
-        self._index = index
-        self._active = False
-
-        self.setText(f"  {icon_char}   {label}")
-        self.setFixedHeight(40)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setObjectName("navBtn")
-
-        # Base style (inactive)
-        self._apply_style()
-
-    @property
-    def index(self) -> int:
-        return self._index
-
-    @property
-    def active(self) -> bool:
-        return self._active
-
-    @active.setter
-    def active(self, value: bool):
-        self._active = value
-        self._apply_style()
-
-    def _apply_style(self):
-        if self._active:
-            self.setStyleSheet(
-                f"""
-                QPushButton#navBtn {{
-                    background-color: {COLOR_SIDEBAR_ACTIVE};
-                    color: {COLOR_SIDEBAR_ACTIVE_TEXT};
-                    border: none;
-                    border-left: 3px solid {COLOR_ACCENT};
-                    border-radius: 0;
-                    text-align: left;
-                    padding: 0 12px 0 17px;
-                    font-size: {FONT_BODY}px;
-                    font-weight: bold;
-                }}
-                """
-            )
-        else:
-            self.setStyleSheet(
-                f"""
-                QPushButton#navBtn {{
-                    background-color: {COLOR_SIDEBAR_BG};
-                    color: {COLOR_SIDEBAR_TEXT};
-                    border: none;
-                    border-left: 3px solid transparent;
-                    border-radius: 0;
-                    text-align: left;
-                    padding: 0 12px 0 17px;
-                    font-size: {FONT_BODY}px;
-                    font-weight: normal;
-                }}
-                QPushButton#navBtn:hover {{
-                    background-color: {COLOR_SIDEBAR_HOVER};
-                }}
-                """
-            )
-
-
-# ─── Main Window ─────────────────────────────────────────────────────
-
-class MainWindow(QMainWindow):
+class MainWindow(tk.Tk):
     """Application shell: sidebar navigation + stacked content area."""
 
     def __init__(self, session):
         super().__init__()
         self.session = session
-        self._nav_buttons: list[_NavButton] = []
-        self.screens: dict[str, QWidget] = {}
+        self._nav_buttons: list[tuple[int, tk.Button]] = []
+        self._active_index: int = -1
+        self.screens: dict[str, tk.Frame] = {}
 
         self._setup_window()
         self._build_ui()
-        self._switch_page(0)          # start on Dashboard
+        self._switch_page(0)  # start on Dashboard
 
     # ── Window Setup ─────────────────────────────────────────────────
 
     def _setup_window(self):
-        self.setWindowTitle("Vehicle Service POS")
-        self.resize(DEFAULT_WINDOW_W, DEFAULT_WINDOW_H)
-        self.setMinimumSize(MIN_WINDOW_W, MIN_WINDOW_H)
+        self.title("Vehicle Service POS")
+        self.geometry(f"{DEFAULT_WINDOW_W}x{DEFAULT_WINDOW_H}")
+        self.minsize(MIN_WINDOW_W, MIN_WINDOW_H)
+        self.configure(bg=COLOR_APP_BG)
 
     # ── UI Construction ──────────────────────────────────────────────
 
     def _build_ui(self):
-        central = QWidget()
-        self.setCentralWidget(central)
-        root = QHBoxLayout(central)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        # Main container: sidebar | content
+        self._main_frame = tk.Frame(self, bg=COLOR_APP_BG)
+        self._main_frame.pack(fill="both", expand=True)
 
-        # ── Sidebar ──────────────────────────────────────────────
-        sidebar = self._build_sidebar()
-        root.addWidget(sidebar)
+        # Sidebar
+        self._build_sidebar()
 
-        # ── Stacked Content ──────────────────────────────────────
-        self.stack = QStackedWidget()
-        self.stack.setStyleSheet(
-            f"QStackedWidget {{ background-color: {COLOR_APP_BG}; }}"
-        )
+        # Content container
+        self._content_frame = tk.Frame(self._main_frame, bg=COLOR_APP_BG)
+        self._content_frame.pack(side="left", fill="both", expand=True, padx=(0, 0))
+
         self._create_screens()
-        root.addWidget(self.stack, 1)
 
-    def _build_sidebar(self) -> QFrame:
-        sidebar = QFrame()
-        sidebar.setFixedWidth(SIDEBAR_WIDTH)
-        sidebar.setObjectName("sidebar")
-        sidebar.setStyleSheet(
-            f"""
-            QFrame#sidebar {{
-                background-color: {COLOR_SIDEBAR_BG};
-                border-right: 1px solid {COLOR_BORDER};
-            }}
-            """
-        )
-
-        layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+    def _build_sidebar(self):
+        sidebar = tk.Frame(self._main_frame, bg=COLOR_SIDEBAR_BG, width=SIDEBAR_WIDTH)
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)
 
         # App brand at top
-        brand = QLabel("  Vehicle Service POS")
-        brand.setFixedHeight(56)
-        brand.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-        brand.setStyleSheet(
-            f"""
-            QLabel {{
-                font-size: 15px;
-                font-weight: bold;
-                color: {COLOR_ACCENT};
-                padding-left: 16px;
-                background: transparent;
-                border: none;
-                border-bottom: 1px solid {COLOR_BORDER};
-            }}
-            """
+        brand = tk.Label(
+            sidebar, text="  Vehicle Service POS",
+            font=(FONT_FAMILY, 15, "bold"),
+            fg=COLOR_ACCENT, bg=COLOR_SIDEBAR_BG,
+            anchor="w", pady=16, padx=16,
         )
-        layout.addWidget(brand)
+        brand.pack(fill="x")
 
-        layout.addSpacing(SPACING_SM)
+        # Separator
+        sep = tk.Frame(sidebar, bg=COLOR_BORDER, height=1)
+        sep.pack(fill="x")
 
         # Navigation buttons
         for idx, (label, icon_char, module_path, class_name) in enumerate(_NAV_ITEMS):
-            btn = _NavButton(label, icon_char, idx)
+            btn = tk.Button(
+                sidebar,
+                text=f"  {icon_char}   {label}",
+                font=(FONT_FAMILY, FONT_BODY),
+                fg=COLOR_SIDEBAR_TEXT,
+                bg=COLOR_SIDEBAR_BG,
+                activeforeground=COLOR_SIDEBAR_TEXT,
+                activebackground=COLOR_SIDEBAR_HOVER,
+                bd=0, relief="flat",
+                anchor="w",
+                padx=17, pady=10,
+                cursor="hand2",
+            )
+            btn.pack(fill="x")
+
             if module_path is None:
-                # Logout — special handler
-                btn.clicked.connect(self._handle_logout)
+                btn.config(command=self._handle_logout)
             else:
-                btn.clicked.connect(lambda checked, i=idx: self._switch_page(i))
-            self._nav_buttons.append(btn)
-            layout.addWidget(btn)
+                btn.config(command=lambda i=idx: self._switch_page(i))
 
-        # Spacer pushes user info to the bottom
-        layout.addStretch(1)
+            self._nav_buttons.append((idx, btn))
 
-        # Separator line
-        sep = QFrame()
-        sep.setFixedHeight(1)
-        sep.setStyleSheet(
-            f"background-color: {COLOR_BORDER}; border: none;"
-        )
-        layout.addWidget(sep)
+        # Spacer
+        spacer = tk.Frame(sidebar, bg=COLOR_SIDEBAR_BG)
+        spacer.pack(fill="both", expand=True)
+
+        # Bottom separator
+        sep2 = tk.Frame(sidebar, bg=COLOR_BORDER, height=1)
+        sep2.pack(fill="x")
 
         # Current user info
-        self._user_label = QLabel("  Not logged in")
-        self._user_label.setFixedHeight(48)
-        self._user_label.setAlignment(
-            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
+        self._user_label = tk.Label(
+            sidebar, text="  Not logged in",
+            font=(FONT_FAMILY, FONT_SMALL),
+            fg=COLOR_TEXT_SECONDARY, bg=COLOR_SIDEBAR_BG,
+            anchor="w", padx=16, pady=12,
         )
-        self._user_label.setStyleSheet(
-            f"""
-            QLabel {{
-                font-size: {FONT_SMALL}px;
-                color: {COLOR_TEXT_SECONDARY};
-                padding-left: 16px;
-                background: transparent;
-                border: none;
-            }}
-            """
-        )
-        layout.addWidget(self._user_label)
+        self._user_label.pack(fill="x")
 
-        # Populate user label from AuthController
         self._refresh_user_label()
-
-        return sidebar
 
     # ── Screen Creation ──────────────────────────────────────────────
 
     def _create_screens(self):
-        """Instantiate each screen and add it to the stacked widget."""
+        """Instantiate each screen and add it to the content frame."""
         screen_specs = [
             ("Dashboard",  "ui.dashboard",  "DashboardScreen"),
             ("Customers",  "ui.customers",  "CustomersScreen"),
@@ -286,57 +157,101 @@ class MainWindow(QMainWindow):
         ]
 
         for key, module_path, class_name in screen_specs:
-            screen_cls = _import_screen(module_path, class_name)
+            screen_cls = self._import_screen(module_path, class_name)
             if screen_cls is not None:
                 try:
-                    screen = screen_cls(self.session, self.stack)
+                    screen = screen_cls(self.session, self._content_frame, parent=self._content_frame)
                 except TypeError:
-                    # Fallback: screen may not accept stacked_widget yet
                     try:
-                        screen = screen_cls(self.session)
-                    except Exception:
-                        screen = _PlaceholderScreen(key, self.session, self.stack)
+                        screen = screen_cls(self.session, parent=self._content_frame)
+                    except Exception as exc:
+                        logger.debug("Could not create %s: %s", key, exc)
+                        screen = self._make_placeholder(key)
             else:
-                screen = _PlaceholderScreen(key, self.session, self.stack)
+                screen = self._make_placeholder(key)
 
             self.screens[key] = screen
-            self.stack.addWidget(screen)
+
+        # Show the first screen
+        self._show_screen("Dashboard")
+
+    def _make_placeholder(self, title: str) -> tk.Frame:
+        """Create a placeholder frame for unimplemented screens."""
+        frame = tk.Frame(self._content_frame, bg=COLOR_APP_BG)
+        lbl = tk.Label(
+            frame, text=f"{title} — screen not yet implemented",
+            font=(FONT_FAMILY, FONT_BODY), fg=COLOR_TEXT_SECONDARY,
+            bg=COLOR_APP_BG,
+        )
+        lbl.pack(pady=SPACING_LG)
+        return frame
+
+    @staticmethod
+    def _import_screen(module_path: str, class_name: str):
+        """Dynamically import a screen class; return None on failure."""
+        try:
+            import importlib
+            mod = importlib.import_module(module_path)
+            return getattr(mod, class_name)
+        except Exception as exc:
+            logger.debug("Could not import %s.%s: %s", module_path, class_name, exc)
+            return None
 
     # ── Navigation ───────────────────────────────────────────────────
 
     def _switch_page(self, index: int):
-        """Update the sidebar active state and switch the stacked widget."""
+        """Update the sidebar active state and switch the visible screen."""
         # Update active button styling
-        for btn in self._nav_buttons:
-            btn.active = (btn.index == index)
+        self._active_index = index
+        for idx, btn in self._nav_buttons:
+            if idx == index:
+                btn.config(
+                    bg=COLOR_SIDEBAR_ACTIVE,
+                    fg=COLOR_SIDEBAR_ACTIVE_TEXT,
+                    font=(FONT_FAMILY, FONT_BODY, "bold"),
+                )
+            else:
+                btn.config(
+                    bg=COLOR_SIDEBAR_BG,
+                    fg=COLOR_SIDEBAR_TEXT,
+                    font=(FONT_FAMILY, FONT_BODY),
+                )
 
-        # Map nav index → stack index (logout has no page, so adjust)
-        # Nav items 0..8 → stack pages 0..8, nav item 9 is logout (no page)
-        stack_index = min(index, self.stack.count() - 1)
-        self.stack.setCurrentIndex(stack_index)
+        # Map nav index to screen key
+        nav_keys = [item[0] for item in _NAV_ITEMS if item[2] is not None]
+        if index < len(nav_keys):
+            self._show_screen(nav_keys[index])
+
+    def _show_screen(self, key: str):
+        """Hide all screens, then show the one matching *key*."""
+        for skey, screen in self.screens.items():
+            screen.pack_forget()
+
+        if key in self.screens:
+            screen = self.screens[key]
+            screen.pack(fill="both", expand=True, padx=SPACING_LG, pady=SPACING_LG)
+            # Call refresh if available
+            if hasattr(screen, 'refresh'):
+                try:
+                    screen.refresh()
+                except Exception:
+                    pass
 
     # ── Logout ───────────────────────────────────────────────────────
 
     def _handle_logout(self):
-        """Confirm logout, then clear session and restart to login screen."""
-        reply = QMessageBox.question(
-            self,
+        """Confirm logout, then clear session and close window."""
+        reply = messagebox.askyesno(
             "Confirm Logout",
             "Are you sure you want to log out?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+            default="no",
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        if not reply:
             return
 
         logger.info("User logged out from MainWindow.")
-
-        # Clear the AuthController session
         AuthController().logout()
-
-        # Close this window — the application loop in main.py
-        # should detect the closure and return to the login screen.
-        self.close()
+        self.destroy()
 
     # ── Helpers ──────────────────────────────────────────────────────
 
@@ -344,11 +259,9 @@ class MainWindow(QMainWindow):
         """Update the sidebar user label from the current AuthController state."""
         user = AuthController().get_current_user()
         if user is not None:
-            self._user_label.setText(
-                f"  {user.full_name}\n  {user.role_display}"
-            )
+            self._user_label.config(text=f"  {user.full_name}\n  {user.role_display}")
         else:
-            self._user_label.setText("  Not logged in")
+            self._user_label.config(text="  Not logged in")
 
     def set_current_user(self, user):
         """Public helper so the caller (main.py) can push user info after login."""

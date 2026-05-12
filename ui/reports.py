@@ -4,213 +4,207 @@ ReportsScreen — business analytics and reports for the Vehicle Service POS.
 
 import csv
 import logging
-from datetime import date
+from datetime import date, datetime
 
-from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QTabWidget,
-    QDateEdit,
-    QComboBox,
-    QPushButton,
-    QLabel,
-    QFileDialog,
-    QMessageBox,
-    QHeaderView,
-)
-from PyQt6.QtCore import Qt, QDate
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
 
 from ui.theme import (
-    COLOR_APP_BG,
-    COLOR_PANEL_BG,
-    COLOR_TEXT_PRIMARY,
-    COLOR_TEXT_SECONDARY,
-    COLOR_BORDER,
-    COLOR_ACCENT,
-    COLOR_SUCCESS,
-    COLOR_WARNING,
-    COLOR_ERROR,
-    COLOR_INFO,
-    FONT_FAMILY,
-    FONT_PAGE_TITLE,
-    FONT_SECTION_TITLE,
-    FONT_BODY,
-    FONT_BUTTON,
-    FONT_SMALL,
-    FONT_MONO,
-    SPACING_XS,
-    SPACING_SM,
-    SPACING_MD,
-    SPACING_LG,
-    BUTTON_HEIGHT,
-    INPUT_HEIGHT,
+    COLOR_APP_BG, COLOR_PANEL_BG, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY,
+    COLOR_BORDER, COLOR_ACCENT, COLOR_SUCCESS, COLOR_WARNING, COLOR_ERROR,
+    COLOR_INFO, FONT_FAMILY, FONT_PAGE_TITLE, FONT_SECTION_TITLE,
+    FONT_BODY, FONT_BUTTON, FONT_SMALL, FONT_MONO,
+    SPACING_XS, SPACING_SM, SPACING_MD, SPACING_LG,
+    BUTTON_HEIGHT, INPUT_HEIGHT, status_badge_colors,
 )
-from ui.components import (
-    PageHeader,
-    DataTable,
-    SummaryCard,
-)
+from ui.components import PageHeader, DataTable, SummaryCard
 from controllers.report_controller import ReportController
 from config import cents_to_display
 
 logger = logging.getLogger(__name__)
 
 
-class ReportsScreen(QWidget):
-    """Reports screen with five analytical tabs."""
+class ReportsScreen(tk.Frame):
+    """Reports screen with analytical tabs: Daily Summary, Monthly Revenue, Inventory Report."""
 
-    def __init__(self, session, stacked_widget=None, parent=None):
-        super().__init__(parent)
+    def __init__(self, session, stacked_widget=None, parent=None, **kwargs):
+        super().__init__(parent, **kwargs)
+        self.configure(bg=COLOR_APP_BG)
 
         self._session = session
         self._stacked_widget = stacked_widget
         self._controller = ReportController()
 
         # ── Main layout ──
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(SPACING_LG, SPACING_LG, SPACING_LG, SPACING_LG)
-        layout.setSpacing(SPACING_MD)
+        layout = tk.Frame(self, bg=COLOR_APP_BG)
+        layout.pack(fill="both", expand=True, padx=SPACING_LG, pady=SPACING_LG)
 
         # ── Page header ──
-        self._header = PageHeader("Reports", subtitle="Business analytics and reports")
-        layout.addWidget(self._header)
+        self._header = PageHeader("Reports", subtitle="Business analytics and reports", parent=layout)
 
-        # ── Tab widget ──
-        self._tabs = QTabWidget()
-        layout.addWidget(self._tabs, stretch=1)
+        # ── Tab-like buttons ──
+        tab_bar = tk.Frame(layout, bg=COLOR_APP_BG)
+        tab_bar.pack(fill="x", pady=(0, SPACING_MD))
 
-        # Build each tab
-        self._build_revenue_tab()
-        self._build_job_cards_tab()
-        self._build_payments_tab()
+        self._tab_buttons = {}
+        self._tab_container = tk.Frame(layout, bg=COLOR_APP_BG)
+
+        tabs = [
+            ("daily", "Daily Summary"),
+            ("monthly", "Monthly Revenue"),
+            ("inventory", "Inventory Report"),
+        ]
+
+        for tab_id, tab_label in tabs:
+            btn = tk.Button(
+                tab_bar, text=tab_label,
+                font=(FONT_FAMILY, FONT_BUTTON),
+                fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG,
+                activeforeground=COLOR_TEXT_PRIMARY, activebackground=COLOR_ACCENT,
+                relief="flat", bd=0, padx=20, pady=8,
+                cursor="hand2",
+                command=lambda tid=tab_id: self._switch_tab(tid),
+            )
+            btn.pack(side="left", padx=(0, SPACING_XS))
+            self._tab_buttons[tab_id] = btn
+
+        # Tab content area
+        self._tab_container.pack(fill="both", expand=True)
+
+        # Build each tab's content
+        self._tab_frames = {}
+        self._build_daily_tab()
+        self._build_monthly_tab()
         self._build_inventory_tab()
-        self._build_customers_tab()
 
-        # ── Connect tab change to auto-generate ──
-        self._tabs.currentChanged.connect(self._on_tab_changed)
-
-        # ── Default date range: current month ──
-        today = QDate.currentDate()
-        self._default_from = QDate(today.year(), today.month(), 1)
+        # Default date range: current month
+        today = date.today()
+        self._default_from = date(today.year, today.month, 1)
         self._default_to = today
 
-    # ── Helpers ─────────────────────────────────────────────────────
+        # Show first tab
+        self._switch_tab("daily")
 
-    def _date_from_qdate(self, qdate: QDate) -> date:
-        """Convert QDate to Python date."""
-        return date(qdate.year(), qdate.month(), qdate.day())
+    # ── Tab Switching ─────────────────────────────────────────────
 
-    def _create_filter_row(self, include_status=False, include_generate=True):
-        """Create a horizontal filter bar with date pickers and optional status combo.
+    def _switch_tab(self, tab_id: str):
+        """Show the selected tab and update button styling."""
+        for tid, frame in self._tab_frames.items():
+            frame.pack_forget()
+        for tid, btn in self._tab_buttons.items():
+            if tid == tab_id:
+                btn.config(bg=COLOR_ACCENT, fg="#FFFFFF")
+            else:
+                btn.config(bg=COLOR_PANEL_BG, fg=COLOR_TEXT_PRIMARY)
 
-        Returns (layout, date_from, date_to, status_combo_or_None, generate_btn_or_None).
+        if tab_id in self._tab_frames:
+            self._tab_frames[tab_id].pack(fill="both", expand=True)
+
+    # ── Helpers ───────────────────────────────────────────────────
+
+    def _parse_date_entry(self, entry_widget, default: date) -> date:
+        """Parse a date string from an entry widget, falling back to default."""
+        text = entry_widget.get().strip()
+        if not text:
+            return default
+        try:
+            return datetime.strptime(text, "%Y-%m-%d").date()
+        except ValueError:
+            return default
+
+    def _create_date_filter_row(self, parent, include_status=False):
+        """Create a horizontal filter bar with date entries and optional status combo.
+
+        Returns (frame, date_from_entry, date_to_entry, status_combo_or_None, generate_btn).
         """
-        row = QHBoxLayout()
-        row.setSpacing(SPACING_SM)
+        row = tk.Frame(parent, bg=COLOR_APP_BG)
+        row.pack(fill="x", pady=(0, SPACING_MD))
 
-        # Date From
-        row.addWidget(QLabel("From:"))
-        date_from = QDateEdit()
-        date_from.setCalendarPopup(True)
-        date_from.setDisplayFormat("yyyy-MM-dd")
-        date_from.setFixedHeight(INPUT_HEIGHT)
-        date_from.setDate(self._default_from if hasattr(self, "_default_from") else QDate.currentDate())
-        row.addWidget(date_from)
+        tk.Label(row, text="From:", font=(FONT_FAMILY, FONT_SMALL),
+                 fg=COLOR_TEXT_SECONDARY, bg=COLOR_APP_BG).pack(side="left")
+        date_from = tk.Entry(row, font=(FONT_FAMILY, FONT_BODY), width=12)
+        date_from.insert(0, self._default_from.strftime("%Y-%m-%d"))
+        date_from.pack(side="left", padx=(SPACING_XS, SPACING_SM))
 
-        # Date To
-        row.addWidget(QLabel("To:"))
-        date_to = QDateEdit()
-        date_to.setCalendarPopup(True)
-        date_to.setDisplayFormat("yyyy-MM-dd")
-        date_to.setFixedHeight(INPUT_HEIGHT)
-        date_to.setDate(self._default_to if hasattr(self, "_default_to") else QDate.currentDate())
-        row.addWidget(date_to)
+        tk.Label(row, text="To:", font=(FONT_FAMILY, FONT_SMALL),
+                 fg=COLOR_TEXT_SECONDARY, bg=COLOR_APP_BG).pack(side="left")
+        date_to = tk.Entry(row, font=(FONT_FAMILY, FONT_BODY), width=12)
+        date_to.insert(0, self._default_to.strftime("%Y-%m-%d"))
+        date_to.pack(side="left", padx=(SPACING_XS, SPACING_SM))
 
-        # Status filter (optional)
         status_combo = None
         if include_status:
-            row.addWidget(QLabel("Status:"))
-            status_combo = QComboBox()
-            status_combo.addItems(["All", "PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"])
-            status_combo.setFixedHeight(INPUT_HEIGHT)
-            status_combo.setMinimumWidth(130)
-            row.addWidget(status_combo)
+            tk.Label(row, text="Status:", font=(FONT_FAMILY, FONT_SMALL),
+                     fg=COLOR_TEXT_SECONDARY, bg=COLOR_APP_BG).pack(side="left")
+            status_combo = ttk.Combobox(
+                row, values=["All", "PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"],
+                state="readonly", width=15,
+            )
+            status_combo.set("All")
+            status_combo.pack(side="left", padx=(SPACING_XS, SPACING_SM))
 
-        generate_btn = None
-        if include_generate:
-            generate_btn = QPushButton("Generate")
-            generate_btn.setObjectName("btn_primary")
-            generate_btn.setFixedHeight(BUTTON_HEIGHT)
-            generate_btn.setMinimumWidth(100)
-            row.addWidget(generate_btn)
+        generate_btn = ttk.Button(row, text="Generate", style="Primary.TButton")
+        generate_btn.pack(side="left", padx=(SPACING_SM, 0))
 
-        row.addStretch()
         return row, date_from, date_to, status_combo, generate_btn
 
-    def _create_summary_row(self, cards: list[SummaryCard]) -> QHBoxLayout:
-        """Create a horizontal row of SummaryCards."""
-        row = QHBoxLayout()
-        row.setSpacing(SPACING_MD)
-        for card in cards:
-            row.addWidget(card)
-        row.addStretch()
-        return row
-
     # ═══════════════════════════════════════════════════════════════
-    #  REVENUE TAB
+    #  DAILY SUMMARY TAB
     # ═══════════════════════════════════════════════════════════════
 
-    def _build_revenue_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
-        layout.setSpacing(SPACING_MD)
+    def _build_daily_tab(self):
+        tab = tk.Frame(self._tab_container, bg=COLOR_APP_BG)
 
         # Filter row
-        filter_row, self._rev_date_from, self._rev_date_to, _, generate_btn = \
-            self._create_filter_row(include_status=False, include_generate=True)
-        generate_btn.clicked.connect(self._generate_revenue)
-        layout.addLayout(filter_row)
+        filter_row, self._daily_date_from, self._daily_date_to, _, generate_btn = \
+            self._create_date_filter_row(tab, include_status=False)
+        generate_btn.config(command=self._generate_daily)
 
         # Summary cards
-        self._rev_card_revenue = SummaryCard("Total Revenue", "Rs. 0.00", COLOR_ACCENT)
-        self._rev_card_jobs = SummaryCard("Total Jobs", "0", COLOR_INFO)
-        self._rev_card_avg = SummaryCard("Avg Job Value", "Rs. 0.00", COLOR_SUCCESS)
-        layout.addLayout(self._create_summary_row([
-            self._rev_card_revenue, self._rev_card_jobs, self._rev_card_avg,
-        ]))
+        cards_row = tk.Frame(tab, bg=COLOR_APP_BG)
+        cards_row.pack(fill="x", pady=(0, SPACING_MD))
+
+        self._daily_card_revenue = SummaryCard("Total Revenue", "Rs. 0.00", COLOR_ACCENT, parent=cards_row)
+        self._daily_card_jobs = SummaryCard("Total Jobs", "0", COLOR_INFO, parent=cards_row)
+        self._daily_card_avg = SummaryCard("Avg Job Value", "Rs. 0.00", COLOR_SUCCESS, parent=cards_row)
 
         # Data table
-        self._rev_table = DataTable(columns=[
-            ("Date", 120),
-            ("Revenue", 150),
-            ("Jobs Count", 100),
-            ("Invoices Count", 120),
-        ])
-        layout.addWidget(self._rev_table, stretch=1)
+        self._daily_table = DataTable(
+            columns=[
+                ("Date", 120),
+                ("Revenue", 150),
+                ("Jobs Count", 100),
+                ("Invoices Count", 120),
+            ],
+            parent=tab,
+        )
 
-        self._tabs.addTab(tab, "Revenue")
+        # Export button
+        btn_row = tk.Frame(tab, bg=COLOR_APP_BG)
+        btn_row.pack(fill="x", pady=(SPACING_SM, 0))
+        ttk.Button(btn_row, text="Export to CSV", command=self._export_daily_csv,
+                    style="Secondary.TButton").pack(side="right")
 
-    def _generate_revenue(self):
-        """Fetch and display the revenue report."""
-        date_from = self._date_from_qdate(self._rev_date_from.date())
-        date_to = self._date_from_qdate(self._rev_date_to.date())
+        self._tab_frames["daily"] = tab
+
+    def _generate_daily(self):
+        date_from = self._parse_date_entry(self._daily_date_from, self._default_from)
+        date_to = self._parse_date_entry(self._daily_date_to, self._default_to)
 
         try:
             report = self._controller.get_revenue_report(date_from, date_to)
         except Exception:
             logger.exception("Error generating revenue report")
-            QMessageBox.critical(self, "Error", "Failed to generate revenue report.")
+            messagebox.showerror("Error", "Failed to generate revenue report.")
             return
 
         if not report:
             return
 
         # Update summary cards
-        self._rev_card_revenue.set_value(cents_to_display(report.get("total_revenue_cents", 0)))
-        self._rev_card_jobs.set_value(str(report.get("total_jobs", 0)))
-        self._rev_card_avg.set_value(cents_to_display(report.get("avg_job_value_cents", 0)))
+        self._daily_card_revenue.set_value(cents_to_display(report.get("total_revenue_cents", 0)))
+        self._daily_card_jobs.set_value(str(report.get("total_jobs", 0)))
+        self._daily_card_avg.set_value(cents_to_display(report.get("avg_job_value_cents", 0)))
 
         # Update table
         rows = []
@@ -221,61 +215,67 @@ class ReportsScreen(QWidget):
                 str(day.get("jobs", 0)),
                 str(day.get("invoices", 0)),
             ])
-        self._rev_table.load_data(rows)
+        self._daily_table.load_data(rows)
+
+    def _export_daily_csv(self):
+        self._export_table_csv(self._daily_table, "daily_report.csv")
 
     # ═══════════════════════════════════════════════════════════════
-    #  JOB CARDS TAB
+    #  MONTHLY REVENUE TAB
     # ═══════════════════════════════════════════════════════════════
 
-    def _build_job_cards_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
-        layout.setSpacing(SPACING_MD)
+    def _build_monthly_tab(self):
+        tab = tk.Frame(self._tab_container, bg=COLOR_APP_BG)
 
         # Filter row
-        filter_row, self._jc_date_from, self._jc_date_to, self._jc_status_combo, generate_btn = \
-            self._create_filter_row(include_status=True, include_generate=True)
-        generate_btn.clicked.connect(self._generate_job_cards)
-        layout.addLayout(filter_row)
+        filter_row, self._monthly_date_from, self._monthly_date_to, self._monthly_status_combo, generate_btn = \
+            self._create_date_filter_row(tab, include_status=True)
+        generate_btn.config(command=self._generate_monthly)
 
         # Data table
-        self._jc_table = DataTable(columns=[
-            ("Job #", 80),
-            ("Vehicle", 130),
-            ("Customer", 150),
-            ("Status", 110),
-            ("Items", 80),
-            ("Labor", 100),
-            ("Total", 120),
-            ("Created", 110),
-        ])
-        layout.addWidget(self._jc_table, stretch=1)
+        self._monthly_table = DataTable(
+            columns=[
+                ("Job #", 80),
+                ("Vehicle", 130),
+                ("Customer", 150),
+                ("Status", 110),
+                ("Items", 80),
+                ("Labor", 100),
+                ("Total", 120),
+                ("Created", 110),
+            ],
+            parent=tab,
+        )
 
-        self._tabs.addTab(tab, "Job Cards")
+        # Export button
+        btn_row = tk.Frame(tab, bg=COLOR_APP_BG)
+        btn_row.pack(fill="x", pady=(SPACING_SM, 0))
+        ttk.Button(btn_row, text="Export to CSV", command=self._export_monthly_csv,
+                    style="Secondary.TButton").pack(side="right")
 
-    def _generate_job_cards(self):
-        """Fetch and display the job card report."""
-        date_from = self._date_from_qdate(self._jc_date_from.date())
-        date_to = self._date_from_qdate(self._jc_date_to.date())
-        status_text = self._jc_status_combo.currentText()
+        self._tab_frames["monthly"] = tab
+
+    def _generate_monthly(self):
+        date_from = self._parse_date_entry(self._monthly_date_from, self._default_from)
+        date_to = self._parse_date_entry(self._monthly_date_to, self._default_to)
+        status_text = self._monthly_status_combo.get()
         status = None if status_text == "All" else status_text
 
         try:
             jobs = self._controller.get_job_card_report(date_from, date_to, status=status)
         except Exception:
             logger.exception("Error generating job card report")
-            QMessageBox.critical(self, "Error", "Failed to generate job card report.")
+            messagebox.showerror("Error", "Failed to generate job card report.")
             return
 
         rows = []
         for jc in jobs:
             vehicle_str = ""
             if hasattr(jc, "vehicle") and jc.vehicle:
-                vehicle_str = f"{jc.vehicle.registration_number or ''} - {jc.vehicle.make or ''} {jc.vehicle.model or ''}".strip(" -")
+                vehicle_str = f"{jc.vehicle.registration_no or ''} - {jc.vehicle.make or ''} {jc.vehicle.model or ''}".strip(" -")
             customer_str = ""
-            if hasattr(jc, "customer") and jc.customer:
-                customer_str = jc.customer.name or ""
+            if hasattr(jc, "customer_obj") and jc.customer_obj:
+                customer_str = jc.customer_obj.name or ""
             items_total = 0
             if hasattr(jc, "items"):
                 items_total = sum(
@@ -298,131 +298,54 @@ class ReportsScreen(QWidget):
                 cents_to_display(total),
                 created_val,
             ])
-        self._jc_table.load_data(rows)
+        self._monthly_table.load_data(rows)
 
-    # ═══════════════════════════════════════════════════════════════
-    #  PAYMENTS TAB
-    # ═══════════════════════════════════════════════════════════════
-
-    def _build_payments_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
-        layout.setSpacing(SPACING_MD)
-
-        # Filter row
-        filter_row, self._pay_date_from, self._pay_date_to, _, generate_btn = \
-            self._create_filter_row(include_status=False, include_generate=True)
-        generate_btn.clicked.connect(self._generate_payments)
-        layout.addLayout(filter_row)
-
-        # Summary cards
-        self._pay_card_total = SummaryCard("Total Payments", "Rs. 0.00", COLOR_ACCENT)
-        self._pay_card_cash = SummaryCard("Cash", "Rs. 0.00", COLOR_SUCCESS)
-        self._pay_card_card = SummaryCard("Card", "Rs. 0.00", COLOR_INFO)
-        self._pay_card_bank = SummaryCard("Bank Transfer", "Rs. 0.00", COLOR_WARNING)
-        layout.addLayout(self._create_summary_row([
-            self._pay_card_total, self._pay_card_cash, self._pay_card_card, self._pay_card_bank,
-        ]))
-
-        # Data table
-        self._pay_table = DataTable(columns=[
-            ("Date", 110),
-            ("Invoice #", 100),
-            ("Customer", 150),
-            ("Amount", 120),
-            ("Method", 110),
-            ("Reference", 130),
-        ])
-        layout.addWidget(self._pay_table, stretch=1)
-
-        self._tabs.addTab(tab, "Payments")
-
-    def _generate_payments(self):
-        """Fetch and display the payment report."""
-        date_from = self._date_from_qdate(self._pay_date_from.date())
-        date_to = self._date_from_qdate(self._pay_date_to.date())
-
-        try:
-            report = self._controller.get_payment_report(date_from, date_to)
-        except Exception:
-            logger.exception("Error generating payment report")
-            QMessageBox.critical(self, "Error", "Failed to generate payment report.")
-            return
-
-        if not report:
-            return
-
-        # Summary cards
-        self._pay_card_total.set_value(cents_to_display(report.get("total_cents", 0)))
-        by_method = report.get("by_method", {})
-        self._pay_card_cash.set_value(cents_to_display(by_method.get("CASH", 0)))
-        self._pay_card_card.set_value(cents_to_display(by_method.get("CARD", 0)))
-        self._pay_card_bank.set_value(cents_to_display(by_method.get("BANK_TRANSFER", 0)))
-
-        # Table
-        rows = []
-        for day in report.get("daily_breakdown", []):
-            day_date = str(day.get("date", ""))
-            day_by_method = day.get("by_method", {})
-            for method, amount_cents in day_by_method.items():
-                rows.append([
-                    day_date,
-                    "",
-                    "",
-                    cents_to_display(amount_cents),
-                    method,
-                    "",
-                ])
-        self._pay_table.load_data(rows)
+    def _export_monthly_csv(self):
+        self._export_table_csv(self._monthly_table, "monthly_report.csv")
 
     # ═══════════════════════════════════════════════════════════════
     #  INVENTORY TAB
     # ═══════════════════════════════════════════════════════════════
 
     def _build_inventory_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
-        layout.setSpacing(SPACING_MD)
+        tab = tk.Frame(self._tab_container, bg=COLOR_APP_BG)
 
         # Summary cards
-        self._inv_card_total = SummaryCard("Total Items", "0", COLOR_ACCENT)
-        self._inv_card_value = SummaryCard("Total Stock Value", "Rs. 0.00", COLOR_SUCCESS)
-        self._inv_card_low = SummaryCard("Low Stock Count", "0", COLOR_ERROR)
-        layout.addLayout(self._create_summary_row([
-            self._inv_card_total, self._inv_card_value, self._inv_card_low,
-        ]))
+        cards_row = tk.Frame(tab, bg=COLOR_APP_BG)
+        cards_row.pack(fill="x", pady=(0, SPACING_MD))
+
+        self._inv_card_total = SummaryCard("Total Items", "0", COLOR_ACCENT, parent=cards_row)
+        self._inv_card_value = SummaryCard("Total Stock Value", "Rs. 0.00", COLOR_SUCCESS, parent=cards_row)
+        self._inv_card_low = SummaryCard("Low Stock Count", "0", COLOR_ERROR, parent=cards_row)
+
+        # Generate button
+        btn_row = tk.Frame(tab, bg=COLOR_APP_BG)
+        btn_row.pack(fill="x", pady=(0, SPACING_MD))
+        ttk.Button(btn_row, text="Generate Inventory Report", command=self._generate_inventory,
+                    style="Primary.TButton").pack(side="left")
+        ttk.Button(btn_row, text="Export to CSV", command=self._export_inventory_csv,
+                    style="Secondary.TButton").pack(side="right")
 
         # Data table
-        self._inv_table = DataTable(columns=[
-            ("Code", 100),
-            ("Name", 180),
-            ("Category", 120),
-            ("In Stock", 90),
-            ("Reorder Level", 110),
-        ])
-        layout.addWidget(self._inv_table, stretch=1)
+        self._inv_table = DataTable(
+            columns=[
+                ("Code", 100),
+                ("Name", 180),
+                ("Category", 120),
+                ("In Stock", 90),
+                ("Reorder Level", 110),
+            ],
+            parent=tab,
+        )
 
-        # Export CSV button row
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        self._export_csv_btn = QPushButton("Export to CSV")
-        self._export_csv_btn.setObjectName("btn_secondary")
-        self._export_csv_btn.setFixedHeight(BUTTON_HEIGHT)
-        self._export_csv_btn.clicked.connect(self._export_inventory_csv)
-        btn_row.addWidget(self._export_csv_btn)
-        layout.addLayout(btn_row)
-
-        self._tabs.addTab(tab, "Inventory")
+        self._tab_frames["inventory"] = tab
 
     def _generate_inventory(self):
-        """Fetch and display the inventory report."""
         try:
             report = self._controller.get_inventory_report()
         except Exception:
             logger.exception("Error generating inventory report")
-            QMessageBox.critical(self, "Error", "Failed to generate inventory report.")
+            messagebox.showerror("Error", "Failed to generate inventory report.")
             return
 
         if not report:
@@ -448,110 +371,36 @@ class ReportsScreen(QWidget):
         self._inv_table.load_data(rows)
 
     def _export_inventory_csv(self):
-        """Export the current inventory table data to a CSV file."""
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "Export Inventory Report", "inventory_report.csv",
-            "CSV Files (*.csv);;All Files (*)",
+        self._export_table_csv(self._inv_table, "inventory_report.csv")
+
+    # ═══════════════════════════════════════════════════════════════
+    #  CSV Export Helper
+    # ═══════════════════════════════════════════════════════════════
+
+    def _export_table_csv(self, table: DataTable, default_filename: str):
+        """Export the current table data to a CSV file."""
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            initialfile=default_filename,
+            filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")],
         )
         if not file_path:
             return
 
         try:
-            headers = []
-            for col in range(self._inv_table.columnCount()):
-                headers.append(self._inv_table.horizontalHeaderItem(col).text())
+            # Get headers and data from the table
+            headers = [header for header, _ in table._columns]
+            data_rows = []
+            for item_id in table._tree.get_children():
+                values = table._tree.item(item_id, "values")
+                data_rows.append(list(values))
 
             with open(file_path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow(headers)
-                for row in range(self._inv_table.rowCount()):
-                    row_data = []
-                    for col in range(self._inv_table.columnCount()):
-                        item = self._inv_table.item(row, col)
-                        row_data.append(item.text() if item else "")
-                    writer.writerow(row_data)
+                writer.writerows(data_rows)
 
-            QMessageBox.information(self, "Export Successful", f"Inventory report saved to:\n{file_path}")
+            messagebox.showinfo("Export Successful", f"Report saved to:\n{file_path}")
         except Exception:
-            logger.exception("Error exporting inventory CSV")
-            QMessageBox.critical(self, "Export Error", "Failed to export inventory report to CSV.")
-
-    # ═══════════════════════════════════════════════════════════════
-    #  CUSTOMERS TAB
-    # ═══════════════════════════════════════════════════════════════
-
-    def _build_customers_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
-        layout.setSpacing(SPACING_MD)
-
-        # Summary cards
-        self._cust_card_total = SummaryCard("Total Customers", "0", COLOR_ACCENT)
-        self._cust_card_vehicles = SummaryCard("With Vehicles", "0", COLOR_INFO)
-        self._cust_card_active = SummaryCard("With Active Jobs", "0", COLOR_WARNING)
-        layout.addLayout(self._create_summary_row([
-            self._cust_card_total, self._cust_card_vehicles, self._cust_card_active,
-        ]))
-
-        # Data table
-        self._cust_table = DataTable(columns=[
-            ("ID", 50),
-            ("Name", 180),
-            ("Phone", 130),
-            ("Email", 180),
-            ("Vehicles Count", 110),
-            ("Active Jobs", 100),
-        ])
-        layout.addWidget(self._cust_table, stretch=1)
-
-        self._tabs.addTab(tab, "Customers")
-
-    def _generate_customers(self):
-        """Fetch and display the customer report."""
-        try:
-            report = self._controller.get_customer_report()
-        except Exception:
-            logger.exception("Error generating customer report")
-            QMessageBox.critical(self, "Error", "Failed to generate customer report.")
-            return
-
-        if not report:
-            return
-
-        # Summary cards
-        self._cust_card_total.set_value(str(report.get("total_customers", 0)))
-        self._cust_card_vehicles.set_value(str(report.get("with_vehicles", 0)))
-        self._cust_card_active.set_value(str(report.get("with_active_jobs", 0)))
-
-        # If the report returns a customers list, populate the table
-        customers = report.get("customers", [])
-        rows = []
-        for c in customers:
-            rows.append([
-                getattr(c, "id", ""),
-                getattr(c, "name", ""),
-                getattr(c, "phone", "") or "",
-                getattr(c, "email", "") or "",
-                str(getattr(c, "vehicles_count", 0)),
-                str(getattr(c, "active_jobs_count", 0)),
-            ])
-        self._cust_table.load_data(rows)
-
-    # ═══════════════════════════════════════════════════════════════
-    #  TAB CHANGE HANDLER
-    # ═══════════════════════════════════════════════════════════════
-
-    def _on_tab_changed(self, index: int):
-        """Auto-generate report when a tab is selected."""
-        tab_name = self._tabs.tabText(index)
-        if tab_name == "Revenue":
-            self._generate_revenue()
-        elif tab_name == "Job Cards":
-            self._generate_job_cards()
-        elif tab_name == "Payments":
-            self._generate_payments()
-        elif tab_name == "Inventory":
-            self._generate_inventory()
-        elif tab_name == "Customers":
-            self._generate_customers()
+            logger.exception("Error exporting CSV")
+            messagebox.showerror("Export Error", "Failed to export report to CSV.")

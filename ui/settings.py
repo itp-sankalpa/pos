@@ -4,67 +4,25 @@ SettingsScreen — application configuration for the Vehicle Service POS.
 
 import json
 import logging
+import os
 
-from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QTabWidget,
-    QLabel,
-    QLineEdit,
-    QTextEdit,
-    QComboBox,
-    QSpinBox,
-    QCheckBox,
-    QRadioButton,
-    QButtonGroup,
-    QPushButton,
-    QMessageBox,
-)
-from PyQt6.QtCore import Qt
-from PyQt6.QtPrintSupport import QPrinter, QPrinterInfo
+import tkinter as tk
+from tkinter import ttk, messagebox
 
 from ui.theme import (
-    COLOR_APP_BG,
-    COLOR_PANEL_BG,
-    COLOR_TEXT_PRIMARY,
-    COLOR_TEXT_SECONDARY,
-    COLOR_BORDER,
-    COLOR_ACCENT,
-    COLOR_SUCCESS,
-    COLOR_WARNING,
-    COLOR_ERROR,
-    COLOR_INFO,
-    COLOR_SIDEBAR_BG,
-    COLOR_SIDEBAR_TEXT,
-    FONT_FAMILY,
-    FONT_PAGE_TITLE,
-    FONT_SECTION_TITLE,
-    FONT_BODY,
-    FONT_BUTTON,
-    FONT_SMALL,
-    FONT_MONO,
-    SPACING_XS,
-    SPACING_SM,
-    SPACING_MD,
-    SPACING_LG,
-    BUTTON_HEIGHT,
-    INPUT_HEIGHT,
+    COLOR_APP_BG, COLOR_PANEL_BG, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY,
+    COLOR_BORDER, COLOR_ACCENT, COLOR_SUCCESS, COLOR_WARNING, COLOR_ERROR,
+    COLOR_INFO, COLOR_SIDEBAR_BG, COLOR_SIDEBAR_TEXT,
+    FONT_FAMILY, FONT_PAGE_TITLE, FONT_SECTION_TITLE, FONT_BODY,
+    FONT_BUTTON, FONT_SMALL, FONT_MONO,
+    SPACING_XS, SPACING_SM, SPACING_MD, SPACING_LG,
+    BUTTON_HEIGHT, INPUT_HEIGHT,
 )
-from ui.components import (
-    PageHeader,
-    FormPanel,
-)
+from ui.components import PageHeader, FormPanel
 from config import (
-    APP_NAME,
-    APP_VERSION,
-    DATA_DIR,
-    PRINTER_SETTINGS,
-    RECEIPT_CHARS_80MM,
-    RECEIPT_CHARS_58MM,
+    APP_NAME, APP_VERSION, DATA_DIR, PRINTER_SETTINGS,
+    RECEIPT_CHARS_80MM, RECEIPT_CHARS_58MM,
 )
-
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +36,7 @@ def _load_settings() -> dict:
         "business_name": "",
         "business_address": "",
         "business_phone": "",
+        "invoice_prefix": "INV",
         "thermal_paper_width": 80,
         "a4_printer_name": "",
         "thermal_printer_name": "",
@@ -106,11 +65,12 @@ def _save_settings(settings: dict) -> bool:
         return False
 
 
-class SettingsScreen(QWidget):
-    """Settings screen with General, Printer, and About tabs."""
+class SettingsScreen(tk.Frame):
+    """Settings screen with Invoice Settings, Printer Settings, and Database Backup sections."""
 
-    def __init__(self, session, stacked_widget=None, parent=None):
-        super().__init__(parent)
+    def __init__(self, session, stacked_widget=None, parent=None, **kwargs):
+        super().__init__(parent, **kwargs)
+        self.configure(bg=COLOR_APP_BG)
 
         self._session = session
         self._stacked_widget = stacked_widget
@@ -119,350 +79,341 @@ class SettingsScreen(QWidget):
         self._settings = _load_settings()
 
         # ── Main layout ──
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(SPACING_LG, SPACING_LG, SPACING_LG, SPACING_LG)
-        layout.setSpacing(SPACING_MD)
+        layout = tk.Frame(self, bg=COLOR_APP_BG)
+        layout.pack(fill="both", expand=True, padx=SPACING_LG, pady=SPACING_LG)
 
         # ── Page header ──
-        self._header = PageHeader("Settings", subtitle="Application configuration")
-        layout.addWidget(self._header)
+        self._header = PageHeader("Settings", subtitle="Application configuration", parent=layout)
 
-        # ── Tab widget ──
-        self._tabs = QTabWidget()
-        layout.addWidget(self._tabs, stretch=1)
+        # ── Scrollable content ──
+        canvas = tk.Canvas(layout, bg=COLOR_APP_BG, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(layout, orient="vertical", command=canvas.yview)
+        self._scroll_frame = tk.Frame(canvas, bg=COLOR_APP_BG)
 
-        # Build tabs
-        self._build_general_tab()
-        self._build_printer_tab()
-        self._build_about_tab()
+        self._scroll_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=self._scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Build sections
+        self._build_invoice_section()
+        self._build_printer_section()
+        self._build_backup_section()
+        self._build_about_section()
+
+        # ── Save All button ──
+        btn_frame = tk.Frame(self._scroll_frame, bg=COLOR_APP_BG)
+        btn_frame.pack(fill="x", pady=SPACING_LG)
+        tk.Frame(btn_frame, bg=COLOR_APP_BG).pack(side="left", fill="x", expand=True)
+        ttk.Button(btn_frame, text="Save All Settings", command=self._save_all_settings,
+                    style="Primary.TButton").pack(side="right")
 
     # ═══════════════════════════════════════════════════════════════
-    #  GENERAL TAB
+    #  INVOICE SETTINGS
     # ═══════════════════════════════════════════════════════════════
 
-    def _build_general_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
-        layout.setSpacing(SPACING_MD)
+    def _build_invoice_section(self):
+        section = tk.LabelFrame(
+            self._scroll_frame, text=" Invoice Settings ",
+            font=(FONT_FAMILY, FONT_SECTION_TITLE, "bold"),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG,
+            padx=SPACING_MD, pady=SPACING_MD,
+        )
+        section.pack(fill="x", pady=(0, SPACING_MD))
 
-        # ── Form panel ──
-        form = FormPanel("Business Information")
+        form = FormPanel("Business Information", parent=section)
 
         # Business Name
-        self._business_name_input = QLineEdit()
-        self._business_name_input.setPlaceholderText("Business name")
-        self._business_name_input.setFixedHeight(INPUT_HEIGHT)
-        self._business_name_input.setText(self._settings.get("business_name", ""))
+        self._business_name_input = tk.Entry(form, font=(FONT_FAMILY, FONT_BODY))
+        self._business_name_input.insert(0, self._settings.get("business_name", ""))
         form.add_row("Business Name", self._business_name_input)
 
         # Business Address
-        self._business_address_input = QTextEdit()
-        self._business_address_input.setPlaceholderText("Business address")
-        self._business_address_input.setFixedHeight(72)
-        self._business_address_input.setPlainText(self._settings.get("business_address", ""))
+        self._business_address_input = tk.Text(form, font=(FONT_FAMILY, FONT_BODY), height=3, wrap="word")
+        self._business_address_input.insert("1.0", self._settings.get("business_address", ""))
         form.add_row("Business Address", self._business_address_input)
 
         # Business Phone
-        self._business_phone_input = QLineEdit()
-        self._business_phone_input.setPlaceholderText("Business phone")
-        self._business_phone_input.setFixedHeight(INPUT_HEIGHT)
-        self._business_phone_input.setText(self._settings.get("business_phone", ""))
+        self._business_phone_input = tk.Entry(form, font=(FONT_FAMILY, FONT_BODY))
+        self._business_phone_input.insert(0, self._settings.get("business_phone", ""))
         form.add_row("Business Phone", self._business_phone_input)
 
         form.add_separator()
 
-        # Thermal Paper Width
-        self._thermal_width_combo = QComboBox()
-        self._thermal_width_combo.addItems(["58mm", "80mm"])
-        self._thermal_width_combo.setFixedHeight(INPUT_HEIGHT)
-        self._thermal_width_combo.setMinimumWidth(120)
-        # Set current from saved settings
-        saved_width = self._settings.get("thermal_paper_width", 80)
-        width_index = 0 if saved_width == 58 else 1
-        self._thermal_width_combo.setCurrentIndex(width_index)
-        form.add_row("Thermal Paper Width", self._thermal_width_combo)
+        # Invoice Prefix
+        self._invoice_prefix_input = tk.Entry(form, font=(FONT_FAMILY, FONT_BODY))
+        self._invoice_prefix_input.insert(0, self._settings.get("invoice_prefix", "INV"))
+        form.add_row("Invoice Prefix", self._invoice_prefix_input)
 
-        layout.addWidget(form)
+        # Save section button
+        btn_row = tk.Frame(section, bg=COLOR_PANEL_BG)
+        btn_row.pack(fill="x", pady=(SPACING_SM, 0))
+        ttk.Button(btn_row, text="Save Invoice Settings", command=self._save_invoice_settings,
+                    style="Primary.TButton").pack(side="right")
 
-        # ── Save button ──
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        save_btn = QPushButton("Save")
-        save_btn.setObjectName("btn_primary")
-        save_btn.setFixedHeight(BUTTON_HEIGHT)
-        save_btn.setMinimumWidth(120)
-        save_btn.clicked.connect(self._save_general_settings)
-        btn_row.addWidget(save_btn)
-        layout.addLayout(btn_row)
-
-        layout.addStretch()
-
-        self._tabs.addTab(tab, "General")
-
-    def _save_general_settings(self):
-        """Save general settings to the config file."""
-        width_text = self._thermal_width_combo.currentText()
-        thermal_width = 58 if width_text == "58mm" else 80
-
-        self._settings["business_name"] = self._business_name_input.text().strip()
-        self._settings["business_address"] = self._business_address_input.toPlainText().strip()
-        self._settings["business_phone"] = self._business_phone_input.text().strip()
-        self._settings["thermal_paper_width"] = thermal_width
-
-        # Also update chars per line based on paper width
-        if thermal_width == 58:
-            self._settings["thermal_chars_per_line"] = RECEIPT_CHARS_58MM
-        else:
-            self._settings["thermal_chars_per_line"] = RECEIPT_CHARS_80MM
+    def _save_invoice_settings(self):
+        self._settings["business_name"] = self._business_name_input.get().strip()
+        self._settings["business_address"] = self._business_address_input.get("1.0", "end-1c").strip()
+        self._settings["business_phone"] = self._business_phone_input.get().strip()
+        self._settings["invoice_prefix"] = self._invoice_prefix_input.get().strip() or "INV"
 
         if _save_settings(self._settings):
-            QMessageBox.information(self, "Settings Saved", "General settings have been saved successfully.")
+            messagebox.showinfo("Settings Saved", "Invoice settings have been saved successfully.")
         else:
-            QMessageBox.critical(self, "Error", "Failed to save settings.")
+            messagebox.showerror("Error", "Failed to save settings.")
 
     # ═══════════════════════════════════════════════════════════════
-    #  PRINTER TAB
+    #  PRINTER SETTINGS
     # ═══════════════════════════════════════════════════════════════
 
-    def _build_printer_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
-        layout.setSpacing(SPACING_MD)
+    def _build_printer_section(self):
+        section = tk.LabelFrame(
+            self._scroll_frame, text=" Printer Settings ",
+            font=(FONT_FAMILY, FONT_SECTION_TITLE, "bold"),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG,
+            padx=SPACING_MD, pady=SPACING_MD,
+        )
+        section.pack(fill="x", pady=(0, SPACING_MD))
 
-        # ── Form panel ──
-        form = FormPanel("Printer Configuration")
+        form = FormPanel("Printer Configuration", parent=section)
 
-        # Get available printers
-        printer_names = [pi.printerName() for pi in QPrinterInfo.availablePrinters()]
-        printer_options = ["None"] + printer_names
+        # A4 Printer Name
+        self._a4_printer_input = tk.Entry(form, font=(FONT_FAMILY, FONT_BODY))
+        self._a4_printer_input.insert(0, self._settings.get("a4_printer_name", ""))
+        form.add_row("A4 Printer Name", self._a4_printer_input)
 
-        # A4 Printer
-        self._a4_printer_combo = QComboBox()
-        self._a4_printer_combo.addItems(printer_options)
-        self._a4_printer_combo.setFixedHeight(INPUT_HEIGHT)
-        self._a4_printer_combo.setMinimumWidth(200)
-        # Set current from saved settings
-        saved_a4 = self._settings.get("a4_printer_name", "")
-        a4_index = self._a4_printer_combo.findText(saved_a4)
-        if a4_index >= 0:
-            self._a4_printer_combo.setCurrentIndex(a4_index)
-        else:
-            self._a4_printer_combo.setCurrentIndex(0)  # "None"
-        form.add_row("A4 Printer", self._a4_printer_combo)
-
-        # Thermal Printer
-        self._thermal_printer_combo = QComboBox()
-        self._thermal_printer_combo.addItems(printer_options)
-        self._thermal_printer_combo.setFixedHeight(INPUT_HEIGHT)
-        self._thermal_printer_combo.setMinimumWidth(200)
-        # Set current from saved settings
-        saved_thermal = self._settings.get("thermal_printer_name", "")
-        thermal_index = self._thermal_printer_combo.findText(saved_thermal)
-        if thermal_index >= 0:
-            self._thermal_printer_combo.setCurrentIndex(thermal_index)
-        else:
-            self._thermal_printer_combo.setCurrentIndex(0)  # "None"
-        form.add_row("Thermal Printer", self._thermal_printer_combo)
+        # Thermal Printer Name
+        self._thermal_printer_input = tk.Entry(form, font=(FONT_FAMILY, FONT_BODY))
+        self._thermal_printer_input.insert(0, self._settings.get("thermal_printer_name", ""))
+        form.add_row("Thermal Printer Name", self._thermal_printer_input)
 
         form.add_separator()
 
-        # Paper Width: 58mm / 80mm radio buttons
-        paper_width_row = QHBoxLayout()
-        paper_width_row.setSpacing(SPACING_SM)
-        self._paper_58_radio = QRadioButton("58mm")
-        self._paper_80_radio = QRadioButton("80mm")
-        self._paper_width_group = QButtonGroup(self)
-        self._paper_width_group.addButton(self._paper_58_radio)
-        self._paper_width_group.addButton(self._paper_80_radio)
-
-        saved_pw = self._settings.get("thermal_paper_width", 80)
-        if saved_pw == 58:
-            self._paper_58_radio.setChecked(True)
-        else:
-            self._paper_80_radio.setChecked(True)
-
-        paper_width_row.addWidget(self._paper_58_radio)
-        paper_width_row.addWidget(self._paper_80_radio)
-        paper_width_row.addStretch()
-
-        form.add_row("Paper Width", paper_width_row)
+        # Paper Width: 58mm / 80mm
+        width_frame = tk.Frame(form, bg=COLOR_PANEL_BG)
+        self._paper_width_var = tk.IntVar(value=self._settings.get("thermal_paper_width", 80))
+        tk.Radiobutton(
+            width_frame, text="58mm", variable=self._paper_width_var, value=58,
+            font=(FONT_FAMILY, FONT_SMALL), fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG,
+            selectcolor=COLOR_PANEL_BG, activebackground=COLOR_PANEL_BG,
+            command=self._on_paper_width_changed,
+        ).pack(side="left", padx=(0, SPACING_MD))
+        tk.Radiobutton(
+            width_frame, text="80mm", variable=self._paper_width_var, value=80,
+            font=(FONT_FAMILY, FONT_SMALL), fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG,
+            selectcolor=COLOR_PANEL_BG, activebackground=COLOR_PANEL_BG,
+            command=self._on_paper_width_changed,
+        ).pack(side="left")
+        form.add_row("Paper Width", width_frame)
 
         # Characters Per Line
-        self._chars_per_line_spin = QSpinBox()
-        self._chars_per_line_spin.setRange(20, 60)
-        self._chars_per_line_spin.setValue(self._settings.get("thermal_chars_per_line", RECEIPT_CHARS_80MM))
-        self._chars_per_line_spin.setFixedHeight(INPUT_HEIGHT)
-        self._chars_per_line_spin.setMinimumWidth(100)
+        self._chars_per_line_var = tk.IntVar(
+            value=self._settings.get("thermal_chars_per_line", RECEIPT_CHARS_80MM)
+        )
+        self._chars_per_line_spin = ttk.Spinbox(
+            form, from_=20, to=60, textvariable=self._chars_per_line_var, width=8,
+        )
         form.add_row("Chars Per Line", self._chars_per_line_spin)
 
         # Auto Cut
-        self._auto_cut_check = QCheckBox("Auto cut after printing")
-        self._auto_cut_check.setChecked(self._settings.get("thermal_auto_cut", True))
+        self._auto_cut_var = tk.BooleanVar(value=self._settings.get("thermal_auto_cut", True))
+        self._auto_cut_check = tk.Checkbutton(
+            form, text="Auto cut after printing", variable=self._auto_cut_var,
+            font=(FONT_FAMILY, FONT_SMALL), fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG,
+            selectcolor=COLOR_PANEL_BG, activebackground=COLOR_PANEL_BG,
+        )
         form.add_row("Auto Cut", self._auto_cut_check)
 
         # Open Cash Drawer
-        self._cash_drawer_check = QCheckBox("Open cash drawer after printing")
-        self._cash_drawer_check.setChecked(self._settings.get("thermal_cash_drawer", False))
+        self._cash_drawer_var = tk.BooleanVar(value=self._settings.get("thermal_cash_drawer", False))
+        self._cash_drawer_check = tk.Checkbutton(
+            form, text="Open cash drawer after printing", variable=self._cash_drawer_var,
+            font=(FONT_FAMILY, FONT_SMALL), fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG,
+            selectcolor=COLOR_PANEL_BG, activebackground=COLOR_PANEL_BG,
+        )
         form.add_row("Cash Drawer", self._cash_drawer_check)
 
-        layout.addWidget(form)
+        # Save section button
+        btn_row = tk.Frame(section, bg=COLOR_PANEL_BG)
+        btn_row.pack(fill="x", pady=(SPACING_SM, 0))
+        ttk.Button(btn_row, text="Save Printer Settings", command=self._save_printer_settings,
+                    style="Primary.TButton").pack(side="right")
 
-        # ── Radio button: auto-set chars per line ──
-        self._paper_58_radio.toggled.connect(self._on_paper_width_changed)
-        self._paper_80_radio.toggled.connect(self._on_paper_width_changed)
-
-        # ── Button row: Test Print + Save ──
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(SPACING_SM)
-        btn_row.addStretch()
-
-        test_btn = QPushButton("Test Print")
-        test_btn.setObjectName("btn_secondary")
-        test_btn.setFixedHeight(BUTTON_HEIGHT)
-        test_btn.setMinimumWidth(120)
-        test_btn.clicked.connect(self._test_print)
-        btn_row.addWidget(test_btn)
-
-        save_btn = QPushButton("Save")
-        save_btn.setObjectName("btn_primary")
-        save_btn.setFixedHeight(BUTTON_HEIGHT)
-        save_btn.setMinimumWidth(120)
-        save_btn.clicked.connect(self._save_printer_settings)
-        btn_row.addWidget(save_btn)
-
-        layout.addLayout(btn_row)
-        layout.addStretch()
-
-        self._tabs.addTab(tab, "Printer")
-
-    def _on_paper_width_changed(self, _checked: bool):
+    def _on_paper_width_changed(self):
         """Auto-set characters per line based on paper width selection."""
-        if self._paper_58_radio.isChecked():
-            self._chars_per_line_spin.setValue(RECEIPT_CHARS_58MM)
+        if self._paper_width_var.get() == 58:
+            self._chars_per_line_var.set(RECEIPT_CHARS_58MM)
         else:
-            self._chars_per_line_spin.setValue(RECEIPT_CHARS_80MM)
+            self._chars_per_line_var.set(RECEIPT_CHARS_80MM)
 
     def _save_printer_settings(self):
-        """Save printer settings to the config file."""
-        self._settings["a4_printer_name"] = self._a4_printer_combo.currentText()
-        self._settings["thermal_printer_name"] = self._thermal_printer_combo.currentText()
-        self._settings["thermal_paper_width"] = 58 if self._paper_58_radio.isChecked() else 80
-        self._settings["thermal_chars_per_line"] = self._chars_per_line_spin.value()
-        self._settings["thermal_auto_cut"] = self._auto_cut_check.isChecked()
-        self._settings["thermal_cash_drawer"] = self._cash_drawer_check.isChecked()
+        self._settings["a4_printer_name"] = self._a4_printer_input.get().strip()
+        self._settings["thermal_printer_name"] = self._thermal_printer_input.get().strip()
+        self._settings["thermal_paper_width"] = self._paper_width_var.get()
+        self._settings["thermal_chars_per_line"] = self._chars_per_line_var.get()
+        self._settings["thermal_auto_cut"] = self._auto_cut_var.get()
+        self._settings["thermal_cash_drawer"] = self._cash_drawer_var.get()
 
         if _save_settings(self._settings):
-            QMessageBox.information(self, "Settings Saved", "Printer settings have been saved successfully.")
+            messagebox.showinfo("Settings Saved", "Printer settings have been saved successfully.")
         else:
-            QMessageBox.critical(self, "Error", "Failed to save printer settings.")
+            messagebox.showerror("Error", "Failed to save printer settings.")
 
-    def _test_print(self):
-        """Print a small test receipt/text to the selected thermal printer."""
-        printer_name = self._thermal_printer_combo.currentText()
-        if printer_name == "None":
-            # Try A4 printer instead
-            printer_name = self._a4_printer_combo.currentText()
-            if printer_name == "None":
-                QMessageBox.warning(self, "No Printer", "Please select a printer first.")
-                return
+    # ═══════════════════════════════════════════════════════════════
+    #  DATABASE BACKUP
+    # ═══════════════════════════════════════════════════════════════
+
+    def _build_backup_section(self):
+        section = tk.LabelFrame(
+            self._scroll_frame, text=" Database Backup ",
+            font=(FONT_FAMILY, FONT_SECTION_TITLE, "bold"),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG,
+            padx=SPACING_MD, pady=SPACING_MD,
+        )
+        section.pack(fill="x", pady=(0, SPACING_MD))
+
+        form = FormPanel("Backup & Restore", parent=section)
+
+        # Database path display
+        from config import DB_PATH
+        db_path_label = tk.Label(
+            form, text=DB_PATH, font=(FONT_FAMILY, FONT_SMALL),
+            fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG, anchor="w",
+        )
+        form.add_row("Database Path", db_path_label)
+
+        # Data directory display
+        data_dir_label = tk.Label(
+            form, text=DATA_DIR, font=(FONT_FAMILY, FONT_SMALL),
+            fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG, anchor="w",
+        )
+        form.add_row("Data Directory", data_dir_label)
+
+        form.add_separator()
+
+        # Backup button row
+        backup_row = tk.Frame(section, bg=COLOR_PANEL_BG)
+        backup_row.pack(fill="x", pady=(SPACING_SM, 0))
+
+        ttk.Button(
+            backup_row, text="Backup Database", command=self._on_backup,
+            style="Secondary.TButton",
+        ).pack(side="right", padx=(SPACING_SM, 0))
+
+        self._backup_status_label = tk.Label(
+            backup_row, text="", font=(FONT_FAMILY, FONT_SMALL),
+            fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG,
+        )
+        self._backup_status_label.pack(side="right")
+
+    def _on_backup(self):
+        """Create a backup copy of the SQLite database."""
+        import shutil
+        from datetime import datetime
+
+        from config import DB_PATH
+
+        if not os.path.exists(DB_PATH):
+            messagebox.showwarning("No Database", "Database file not found.", parent=self)
+            return
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_name = f"vehicle_pos_backup_{timestamp}.db"
+
+        backup_path = tk.filedialog.asksaveasfilename(
+            defaultextension=".db",
+            initialfile=default_name,
+            filetypes=[("SQLite Database", "*.db"), ("All Files", "*.*")],
+            title="Save Database Backup",
+        )
+
+        if not backup_path:
+            return
 
         try:
-            printer = QPrinter(QPrinter.PrinterMode.HighResolution)
-            printer.setPrinterName(printer_name)
-
-            # Configure for thermal if applicable
-            paper_width = 58 if self._paper_58_radio.isChecked() else 80
-            if paper_width == 58:
-                printer.setPageSize(QPrinter.PageSize.Custom)
-                printer.setPageSizeMM(
-                    __import__("PyQt6.QtCore").QtCore.QSizeF(58, 100)
-                )
-            elif paper_width == 80:
-                printer.setPageSize(QPrinter.PageSize.Custom)
-                printer.setPageSizeMM(
-                    __import__("PyQt6.QtCore").QtCore.QSizeF(80, 100)
-                )
-
-            from PyQt6.QtGui import QTextDocument
-            doc = QTextDocument()
-
-            business = self._business_name_input.text().strip() or APP_NAME
-            chars = self._chars_per_line_spin.value()
-            separator = "-" * chars
-
-            test_text = (
-                f"{separator}\n"
-                f"  ** TEST PRINT **\n"
-                f"{separator}\n"
-                f"  {business}\n"
-                f"  Printer: {printer_name}\n"
-                f"  Paper Width: {paper_width}mm\n"
-                f"  Chars Per Line: {chars}\n"
-                f"{separator}\n"
-                f"  If you can read this, your\n"
-                f"  printer is configured correctly.\n"
-                f"{separator}\n\n\n"
+            shutil.copy2(DB_PATH, backup_path)
+            self._backup_status_label.config(
+                text=f"Backup saved: {os.path.basename(backup_path)}",
+                fg=COLOR_SUCCESS,
             )
-
-            doc.setPlainText(test_text)
-            doc.print(printer)
-
-            QMessageBox.information(self, "Test Print", f"Test page sent to '{printer_name}'.")
+            messagebox.showinfo("Backup Complete", f"Database backed up to:\n{backup_path}")
         except Exception:
-            logger.exception("Error during test print")
-            QMessageBox.critical(self, "Print Error", f"Failed to print to '{printer_name}'.\nPlease check the printer connection.")
+            logger.exception("Error backing up database")
+            self._backup_status_label.config(text="Backup failed!", fg=COLOR_ERROR)
+            messagebox.showerror("Backup Error", "Failed to create database backup.")
 
     # ═══════════════════════════════════════════════════════════════
-    #  ABOUT TAB
+    #  ABOUT SECTION
     # ═══════════════════════════════════════════════════════════════
 
-    def _build_about_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
-        layout.setSpacing(SPACING_MD)
+    def _build_about_section(self):
+        section = tk.LabelFrame(
+            self._scroll_frame, text=" About ",
+            font=(FONT_FAMILY, FONT_SECTION_TITLE, "bold"),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG,
+            padx=SPACING_MD, pady=SPACING_MD,
+        )
+        section.pack(fill="x", pady=(0, SPACING_MD))
 
-        # ── About panel ──
-        about_panel = FormPanel("About")
+        form = FormPanel("Application Info", parent=section)
 
         # App name
-        name_label = QLabel(f"{APP_NAME} v{APP_VERSION}")
-        name_label.setStyleSheet(
-            f"font-size: {FONT_PAGE_TITLE}px; font-weight: bold; "
-            f"color: {COLOR_TEXT_PRIMARY}; background: transparent; border: none;"
+        name_label = tk.Label(
+            form, text=f"{APP_NAME} v{APP_VERSION}",
+            font=(FONT_FAMILY, FONT_PAGE_TITLE, "bold"),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG, anchor="w",
         )
-        about_panel.add_row("Application", name_label)
+        form.add_row("Application", name_label)
 
         # Version
-        version_label = QLabel(f"v{APP_VERSION}")
-        version_label.setStyleSheet(
-            f"font-size: {FONT_BODY}px; color: {COLOR_TEXT_SECONDARY}; "
-            f"background: transparent; border: none;"
+        version_label = tk.Label(
+            form, text=f"v{APP_VERSION}",
+            font=(FONT_FAMILY, FONT_BODY),
+            fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG, anchor="w",
         )
-        about_panel.add_row("Version", version_label)
+        form.add_row("Version", version_label)
 
         # Description
-        desc_label = QLabel("A desktop POS application for vehicle service centers")
-        desc_label.setWordWrap(True)
-        desc_label.setStyleSheet(
-            f"font-size: {FONT_BODY}px; color: {COLOR_TEXT_SECONDARY}; "
-            f"background: transparent; border: none;"
+        desc_label = tk.Label(
+            form, text="A desktop POS application for vehicle service centers",
+            font=(FONT_FAMILY, FONT_BODY),
+            fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG, anchor="w", wraplength=400,
         )
-        about_panel.add_row("Description", desc_label)
+        form.add_row("Description", desc_label)
 
-        about_panel.add_separator()
+        form.add_separator()
 
         # Config directory
-        config_label = QLabel(DATA_DIR)
-        config_label.setStyleSheet(
-            f"font-size: {FONT_SMALL}px; color: {COLOR_TEXT_SECONDARY}; "
-            f"font-family: {FONT_MONO}; background: transparent; border: none;"
+        config_label = tk.Label(
+            form, text=DATA_DIR,
+            font=(FONT_MONO, FONT_SMALL),
+            fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG, anchor="w",
         )
-        about_panel.add_row("Data Directory", config_label)
+        form.add_row("Data Directory", config_label)
 
-        layout.addWidget(about_panel)
-        layout.addStretch()
+    # ═══════════════════════════════════════════════════════════════
+    #  SAVE ALL
+    # ═══════════════════════════════════════════════════════════════
 
-        self._tabs.addTab(tab, "About")
+    def _save_all_settings(self):
+        """Collect all form values and save them at once."""
+        self._settings["business_name"] = self._business_name_input.get().strip()
+        self._settings["business_address"] = self._business_address_input.get("1.0", "end-1c").strip()
+        self._settings["business_phone"] = self._business_phone_input.get().strip()
+        self._settings["invoice_prefix"] = self._invoice_prefix_input.get().strip() or "INV"
+        self._settings["a4_printer_name"] = self._a4_printer_input.get().strip()
+        self._settings["thermal_printer_name"] = self._thermal_printer_input.get().strip()
+        self._settings["thermal_paper_width"] = self._paper_width_var.get()
+        self._settings["thermal_chars_per_line"] = self._chars_per_line_var.get()
+        self._settings["thermal_auto_cut"] = self._auto_cut_var.get()
+        self._settings["thermal_cash_drawer"] = self._cash_drawer_var.get()
+
+        if _save_settings(self._settings):
+            messagebox.showinfo("Settings Saved", "All settings have been saved successfully.")
+        else:
+            messagebox.showerror("Error", "Failed to save settings.")

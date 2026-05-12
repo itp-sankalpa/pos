@@ -2,77 +2,28 @@
 InventoryScreen — inventory management page for the Vehicle Service POS.
 """
 
-from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QDialog,
-    QLabel,
-    QLineEdit,
-    QTextEdit,
-    QComboBox,
-    QSpinBox,
-    QDoubleSpinBox,
-    QMessageBox,
-    QPushButton,
-)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
+import tkinter as tk
+from tkinter import ttk, messagebox
 
 from ui.theme import (
-    COLOR_APP_BG,
-    COLOR_PANEL_BG,
-    COLOR_TEXT_PRIMARY,
-    COLOR_TEXT_SECONDARY,
-    COLOR_BORDER,
-    COLOR_ACCENT,
-    COLOR_SUCCESS,
-    COLOR_WARNING,
-    COLOR_ERROR,
-    FONT_FAMILY,
-    FONT_PAGE_TITLE,
-    FONT_SECTION_TITLE,
-    FONT_BODY,
-    FONT_BUTTON,
-    FONT_SMALL,
-    SPACING_XS,
-    SPACING_SM,
-    SPACING_MD,
-    SPACING_LG,
-    BUTTON_HEIGHT,
-    INPUT_HEIGHT,
+    COLOR_APP_BG, COLOR_PANEL_BG, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY,
+    COLOR_BORDER, COLOR_ACCENT, COLOR_SUCCESS, COLOR_WARNING, COLOR_ERROR,
+    COLOR_INFO, COLOR_SELECTED_ROW_BG, FONT_FAMILY, FONT_PAGE_TITLE,
+    FONT_SECTION_TITLE, FONT_BODY, FONT_BUTTON, FONT_SMALL,
+    SPACING_XS, SPACING_SM, SPACING_MD, SPACING_LG,
+    BUTTON_HEIGHT, INPUT_HEIGHT, status_badge_colors,
 )
-from ui.components import (
-    PageHeader,
-    SearchBar,
-    DataTable,
-    FormPanel,
-    SummaryCard,
-    StatusBadge,
-    ActionBar,
-)
+from ui.components import PageHeader, SearchBar, DataTable, FormPanel, SummaryCard, StatusBadge, ActionBar
 from controllers.inventory_controller import InventoryController
 from config import cents_to_display, display_to_cents
 
 
-# ── Column indices for the data table ───────────────────────────────
-COL_CODE = 0
-COL_NAME = 1
-COL_CATEGORY = 2
-COL_BRAND = 3
-COL_UNIT = 4
-COL_COST = 5
-COL_SELL = 6
-COL_STOCK = 7
-COL_REORDER = 8
-COL_STATUS = 9
+class InventoryScreen(tk.Frame):
+    """Inventory management screen with search, table, and CRUD dialogs."""
 
-
-class InventoryScreen(QWidget):
-    """Inventory management screen with search, summary cards, data table, and CRUD dialogs."""
-
-    def __init__(self, session, stacked_widget=None, parent=None):
-        super().__init__(parent)
+    def __init__(self, session, stacked_widget=None, parent=None, **kwargs):
+        super().__init__(parent, **kwargs)
+        self.configure(bg=COLOR_APP_BG)
 
         self._session = session
         self._stacked_widget = stacked_widget
@@ -80,18 +31,16 @@ class InventoryScreen(QWidget):
         self._items: list = []  # Cached InventoryItem list (same order as table rows)
 
         # ── Main layout ──
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(SPACING_LG, SPACING_LG, SPACING_LG, SPACING_LG)
-        layout.setSpacing(SPACING_MD)
+        layout = tk.Frame(self, bg=COLOR_APP_BG)
+        layout.pack(fill="both", expand=True, padx=SPACING_LG, pady=SPACING_LG)
 
         # ── Page header ──
-        self._header = PageHeader("Inventory", subtitle="Manage parts and stock levels")
+        self._header = PageHeader("Inventory", subtitle="Manage parts and stock levels", parent=layout)
         self._header.add_action("Add Item", self._on_add_item, "btn_primary")
-        layout.addWidget(self._header)
 
         # ── Top row: SearchBar + SummaryCards ──
-        top_row = QHBoxLayout()
-        top_row.setSpacing(SPACING_MD)
+        top_row = tk.Frame(layout, bg=COLOR_APP_BG)
+        top_row.pack(fill="x")
 
         # Search bar with category filter
         categories = self._controller.get_categories()
@@ -99,46 +48,36 @@ class InventoryScreen(QWidget):
         self._search_bar = SearchBar(
             placeholder="Search by code, name, or brand...",
             filters=filter_options,
+            parent=top_row,
         )
         self._search_bar.set_search_callback(self._on_search)
         self._search_bar.set_filter_callback(self._on_filter_change)
-        top_row.addWidget(self._search_bar, stretch=1)
 
         # Summary cards
-        self._card_total = SummaryCard("Total Items", "0", COLOR_ACCENT)
-        self._card_low_stock = SummaryCard("Low Stock", "0", COLOR_ERROR)
-        self._card_stock_value = SummaryCard("Stock Value", "Rs. 0.00", COLOR_SUCCESS)
-
-        top_row.addWidget(self._card_total)
-        top_row.addWidget(self._card_low_stock)
-        top_row.addWidget(self._card_stock_value)
-
-        layout.addLayout(top_row)
+        self._card_total = SummaryCard("Total Items", "0", COLOR_ACCENT, parent=top_row)
+        self._card_low_stock = SummaryCard("Low Stock", "0", COLOR_ERROR, parent=top_row)
+        self._card_stock_value = SummaryCard("Stock Value", "Rs. 0.00", COLOR_SUCCESS, parent=top_row)
 
         # ── Data table ──
         self._table = DataTable(
             columns=[
                 ("Code", 80),
-                ("Name", 200),
+                ("Name", 180),
                 ("Category", 100),
-                ("Brand", 100),
-                ("Unit", 50),
-                ("Cost", 90),
-                ("Sell Price", 90),
-                ("In Stock", 70),
-                ("Reorder", 60),
+                ("Qty", 60),
+                ("Buy Price", 100),
+                ("Sell Price", 100),
                 ("Status", 80),
-            ]
+            ],
+            parent=layout,
         )
         self._table.set_double_click_handler(self._on_double_click_row)
-        layout.addWidget(self._table, stretch=1)
 
         # ── Action bar ──
-        self._action_bar = ActionBar()
+        self._action_bar = ActionBar(parent=layout)
         self._action_bar.add_button("Edit", self._on_edit_item, "btn_secondary")
         self._action_bar.add_button("Adjust Stock", self._on_adjust_stock, "btn_secondary")
         self._action_bar.add_button("Delete", self._on_delete_item, "btn_danger")
-        layout.addWidget(self._action_bar)
 
         # ── Initial data load ──
         self.refresh()
@@ -151,7 +90,6 @@ class InventoryScreen(QWidget):
 
     def _load_items(self, search=None, category=None):
         """Load items from the controller and populate the table."""
-        # Normalize "All Categories" filter
         cat = category if category and category != "All Categories" else None
         items = self._controller.get_items(search=search, category=cat)
         self._items = items
@@ -163,31 +101,13 @@ class InventoryScreen(QWidget):
                 item.item_code or "",
                 item.name or "",
                 item.category or "",
-                item.brand or "",
-                item.unit or "",
+                item.quantity_in_stock,
                 cents_to_display(item.cost_price_cents),
                 cents_to_display(item.sell_price_cents),
-                item.quantity_in_stock,
-                item.reorder_level,
                 status_text,
             ])
         self._table.load_data(rows)
-        self._apply_table_formatting()
         self._update_summary_cards()
-
-    def _apply_table_formatting(self):
-        """Apply custom formatting to table cells after data load."""
-        for row_idx, item in enumerate(self._items):
-            # Red text for low stock in "In Stock" column
-            stock_item = self._table.item(row_idx, COL_STOCK)
-            if stock_item and item.is_low_stock:
-                stock_item.setForeground(QColor(COLOR_ERROR))
-
-            # Replace status text with a StatusBadge widget
-            status_text = "Low Stock" if item.is_low_stock else "In Stock"
-            badge = StatusBadge(status_text)
-            badge.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-            self._table.setCellWidget(row_idx, COL_STATUS, badge)
 
     def _update_summary_cards(self):
         """Update the three summary cards with current data."""
@@ -203,28 +123,23 @@ class InventoryScreen(QWidget):
     # ── Search & Filter ─────────────────────────────────────────────
 
     def _on_search(self, text: str):
-        """Debounced search callback — reload with current filters."""
         category = self._search_bar.filter_text()
         self._load_items(search=text.strip() or None, category=category)
 
     def _on_filter_change(self, filter_text: str):
-        """Category filter changed — reload with current search text."""
         search = self._search_bar.text().strip() or None
         self._load_items(search=search, category=filter_text)
 
     # ── Add Item ────────────────────────────────────────────────────
 
     def _on_add_item(self):
-        """Open the Add Item dialog."""
         categories = self._controller.get_categories()
         dialog = ItemDialog(parent=self, categories=categories)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            data = dialog.get_data()
+        self.wait_window(dialog)
+        if dialog.result is not None:
+            data = dialog.result
             if not data["item_code"].strip() or not data["name"].strip():
-                QMessageBox.warning(
-                    self, "Validation Error",
-                    "Item Code and Name are required.",
-                )
+                messagebox.showwarning("Validation Error", "Item Code and Name are required.")
                 return
             result = self._controller.create_item(
                 item_code=data["item_code"].strip(),
@@ -241,42 +156,32 @@ class InventoryScreen(QWidget):
             if result:
                 self.refresh()
             else:
-                QMessageBox.critical(
-                    self, "Error",
-                    "Failed to create item. Item code may already exist.",
-                )
+                messagebox.showerror("Error", "Failed to create item. Item code may already exist.")
 
     # ── Edit Item ───────────────────────────────────────────────────
 
     def _on_edit_item(self):
-        """Open the Edit Item dialog for the selected row."""
         row = self._table.get_selected_row()
         if row < 0:
-            QMessageBox.information(
-                self, "No Selection", "Please select an item to edit.",
-            )
+            messagebox.showinfo("No Selection", "Please select an item to edit.")
             return
         if row >= len(self._items):
             return
         self._open_edit_dialog(self._items[row])
 
-    def _on_double_click_row(self, row, _col):
-        """Double-click handler — open edit dialog for clicked row."""
-        if row < 0 or row >= len(self._items):
+    def _on_double_click_row(self, row_index):
+        if row_index < 0 or row_index >= len(self._items):
             return
-        self._open_edit_dialog(self._items[row])
+        self._open_edit_dialog(self._items[row_index])
 
     def _open_edit_dialog(self, item):
-        """Open the Edit Item dialog pre-filled with *item* data."""
         categories = self._controller.get_categories()
         dialog = ItemDialog(parent=self, categories=categories, item=item)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            data = dialog.get_data()
+        self.wait_window(dialog)
+        if dialog.result is not None:
+            data = dialog.result
             if not data["item_code"].strip() or not data["name"].strip():
-                QMessageBox.warning(
-                    self, "Validation Error",
-                    "Item Code and Name are required.",
-                )
+                messagebox.showwarning("Validation Error", "Item Code and Name are required.")
                 return
             result = self._controller.update_item(
                 item.id,
@@ -293,24 +198,22 @@ class InventoryScreen(QWidget):
             if result:
                 self.refresh()
             else:
-                QMessageBox.critical(self, "Error", "Failed to update item.")
+                messagebox.showerror("Error", "Failed to update item.")
 
     # ── Adjust Stock ────────────────────────────────────────────────
 
     def _on_adjust_stock(self):
-        """Open the Adjust Stock dialog for the selected item."""
         row = self._table.get_selected_row()
         if row < 0:
-            QMessageBox.information(
-                self, "No Selection", "Please select an item to adjust stock.",
-            )
+            messagebox.showinfo("No Selection", "Please select an item to adjust stock.")
             return
         if row >= len(self._items):
             return
         item = self._items[row]
         dialog = AdjustStockDialog(parent=self, item=item)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            data = dialog.get_data()
+        self.wait_window(dialog)
+        if dialog.result is not None:
+            data = dialog.result
             result = self._controller.adjust_stock(
                 item_id=item.id,
                 qty=data["quantity"],
@@ -321,351 +224,299 @@ class InventoryScreen(QWidget):
             if result:
                 self.refresh()
             else:
-                QMessageBox.critical(self, "Error", "Failed to adjust stock.")
+                messagebox.showerror("Error", "Failed to adjust stock.")
 
     # ── Delete Item ─────────────────────────────────────────────────
 
     def _on_delete_item(self):
-        """Confirm and soft-delete the selected item."""
         row = self._table.get_selected_row()
         if row < 0:
-            QMessageBox.information(
-                self, "No Selection", "Please select an item to delete.",
-            )
+            messagebox.showinfo("No Selection", "Please select an item to delete.")
             return
         if row >= len(self._items):
             return
         item = self._items[row]
 
-        reply = QMessageBox.question(
-            self,
+        reply = messagebox.askyesno(
             "Confirm Delete",
             f"Are you sure you want to delete '{item.name}' ({item.item_code})?\n"
             "This will deactivate the item.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+            default="no",
         )
-        if reply == QMessageBox.StandardButton.Yes:
+        if reply:
             success = self._controller.delete_item(item.id)
             if success:
                 self.refresh()
             else:
-                QMessageBox.critical(self, "Error", "Failed to delete item.")
+                messagebox.showerror("Error", "Failed to delete item.")
 
 
 # ─── Item Dialog (Add / Edit) ───────────────────────────────────────
 
-class ItemDialog(QDialog):
+class ItemDialog(tk.Toplevel):
     """Dialog for creating or editing an inventory item."""
 
     UNIT_OPTIONS = ["PCS", "LTR", "KG", "SET", "M", "PAIR"]
 
-    def __init__(self, parent=None, categories=None, item=None):
-        super().__init__(parent)
+    def __init__(self, parent=None, categories=None, item=None, **kwargs):
+        super().__init__(parent, **kwargs)
 
+        self.result = None
         self._item = item
         self._is_edit = item is not None
         categories = categories or []
 
-        self.setWindowTitle("Edit Item" if self._is_edit else "Add Item")
-        self.setMinimumWidth(520)
-        self.setModal(True)
+        self.title("Edit Item" if self._is_edit else "Add Item")
+        self.configure(bg=COLOR_APP_BG)
+        self.grab_set()
+        self.transient(parent)
+        self.minsize(540, 620)
 
         # ── Main layout ──
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(SPACING_LG, SPACING_LG, SPACING_LG, SPACING_LG)
-        outer.setSpacing(SPACING_MD)
+        outer = tk.Frame(self, bg=COLOR_APP_BG, padx=SPACING_LG, pady=SPACING_LG)
+        outer.pack(fill="both", expand=True)
 
-        # ── Form panel ──
-        form = FormPanel("Item Details")
+        form = FormPanel("Item Details", parent=outer)
 
         # Item Code *
-        self._item_code_input = QLineEdit()
-        self._item_code_input.setPlaceholderText("Unique item code *")
-        self._item_code_input.setFixedHeight(INPUT_HEIGHT)
+        self._item_code_input = tk.Entry(form, font=(FONT_FAMILY, FONT_BODY))
         form.add_row("Item Code *", self._item_code_input)
 
         # Name *
-        self._name_input = QLineEdit()
-        self._name_input.setPlaceholderText("Item name *")
-        self._name_input.setFixedHeight(INPUT_HEIGHT)
+        self._name_input = tk.Entry(form, font=(FONT_FAMILY, FONT_BODY))
         form.add_row("Name *", self._name_input)
 
         # Description
-        self._description_input = QTextEdit()
-        self._description_input.setPlaceholderText("Description")
-        self._description_input.setFixedHeight(72)
+        self._description_input = tk.Text(form, font=(FONT_FAMILY, FONT_BODY), height=3, wrap="word")
         form.add_row("Description", self._description_input)
 
         # Category
-        self._category_combo = QComboBox()
-        self._category_combo.setEditable(True)
-        self._category_combo.setFixedHeight(INPUT_HEIGHT)
-        self._category_combo.addItem("")  # blank default
-        self._category_combo.addItems(categories)
+        cat_values = [""] + categories
+        self._category_combo = ttk.Combobox(form, values=cat_values, width=18)
+        self._category_combo.set("")
         form.add_row("Category", self._category_combo)
 
         # Brand
-        self._brand_input = QLineEdit()
-        self._brand_input.setPlaceholderText("Brand")
-        self._brand_input.setFixedHeight(INPUT_HEIGHT)
+        self._brand_input = tk.Entry(form, font=(FONT_FAMILY, FONT_BODY))
         form.add_row("Brand", self._brand_input)
 
         # Unit
-        self._unit_combo = QComboBox()
-        self._unit_combo.setFixedHeight(INPUT_HEIGHT)
-        self._unit_combo.addItems(self.UNIT_OPTIONS)
+        self._unit_combo = ttk.Combobox(form, values=self.UNIT_OPTIONS, state="readonly", width=10)
+        self._unit_combo.set("PCS")
         form.add_row("Unit", self._unit_combo)
 
         form.add_separator()
 
-        # Cost Price (displays LKR, saves as cents)
-        self._cost_spin = QDoubleSpinBox()
-        self._cost_spin.setPrefix("Rs. ")
-        self._cost_spin.setDecimals(2)
-        self._cost_spin.setRange(0.00, 9_999_999.99)
-        self._cost_spin.setFixedHeight(INPUT_HEIGHT)
-        form.add_row("Cost Price", self._cost_spin)
+        # Cost Price
+        self._cost_var = tk.StringVar(value="0.00")
+        self._cost_input = tk.Entry(form, textvariable=self._cost_var, font=(FONT_FAMILY, FONT_BODY))
+        form.add_row("Cost Price (Rs.)", self._cost_input)
 
-        # Sell Price (displays LKR, saves as cents)
-        self._sell_spin = QDoubleSpinBox()
-        self._sell_spin.setPrefix("Rs. ")
-        self._sell_spin.setDecimals(2)
-        self._sell_spin.setRange(0.00, 9_999_999.99)
-        self._sell_spin.setFixedHeight(INPUT_HEIGHT)
-        form.add_row("Sell Price", self._sell_spin)
+        # Sell Price
+        self._sell_var = tk.StringVar(value="0.00")
+        self._sell_input = tk.Entry(form, textvariable=self._sell_var, font=(FONT_FAMILY, FONT_BODY))
+        form.add_row("Sell Price (Rs.)", self._sell_input)
 
         # Initial Stock
-        self._stock_spin = QSpinBox()
-        self._stock_spin.setRange(0, 999_999)
-        self._stock_spin.setFixedHeight(INPUT_HEIGHT)
+        self._stock_var = tk.IntVar(value=0)
+        self._stock_spin = ttk.Spinbox(form, from_=0, to=999999, textvariable=self._stock_var, width=10)
         form.add_row("Initial Stock", self._stock_spin)
 
         # Reorder Level
-        self._reorder_spin = QSpinBox()
-        self._reorder_spin.setRange(0, 999_999)
-        self._reorder_spin.setValue(5)
-        self._reorder_spin.setFixedHeight(INPUT_HEIGHT)
+        self._reorder_var = tk.IntVar(value=5)
+        self._reorder_spin = ttk.Spinbox(form, from_=0, to=999999, textvariable=self._reorder_var, width=10)
         form.add_row("Reorder Level", self._reorder_spin)
 
-        outer.addWidget(form)
-
         # ── Dialog buttons ──
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(SPACING_SM)
-        btn_layout.addStretch()
-
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("btn_secondary")
-        cancel_btn.setFixedHeight(BUTTON_HEIGHT)
-        cancel_btn.setMinimumWidth(100)
-        cancel_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(cancel_btn)
-
-        save_btn = QPushButton("Save" if self._is_edit else "Create")
-        save_btn.setObjectName("btn_primary")
-        save_btn.setFixedHeight(BUTTON_HEIGHT)
-        save_btn.setMinimumWidth(100)
-        save_btn.clicked.connect(self._on_save)
-        btn_layout.addWidget(save_btn)
-
-        outer.addLayout(btn_layout)
+        btn_frame = tk.Frame(outer, bg=COLOR_APP_BG)
+        btn_frame.pack(fill="x", pady=(SPACING_MD, 0))
+        tk.Frame(btn_frame, bg=COLOR_APP_BG).pack(side="left", fill="x", expand=True)
+        ttk.Button(btn_frame, text="Cancel", command=self._on_cancel,
+                    style="Secondary.TButton").pack(side="right", padx=(SPACING_SM, 0))
+        save_text = "Save" if self._is_edit else "Create"
+        ttk.Button(btn_frame, text=save_text, command=self._on_save,
+                    style="Primary.TButton").pack(side="right")
 
         # ── Pre-fill for edit mode ──
         if self._is_edit:
-            self._item_code_input.setText(item.item_code or "")
-            self._name_input.setText(item.name or "")
-            self._description_input.setPlainText(item.description or "")
+            self._item_code_input.insert(0, item.item_code or "")
+            self._name_input.insert(0, item.name or "")
+            self._description_input.insert("1.0", item.description or "")
 
-            # Set category combo to existing value
             cat_text = item.category or ""
-            cat_idx = self._category_combo.findText(cat_text)
-            if cat_idx >= 0:
-                self._category_combo.setCurrentIndex(cat_idx)
+            if cat_text in cat_values:
+                self._category_combo.set(cat_text)
             else:
-                self._category_combo.setEditText(cat_text)
+                self._category_combo.set(cat_text)
 
-            self._brand_input.setText(item.brand or "")
+            self._brand_input.insert(0, item.brand or "")
 
-            # Set unit combo
-            unit_idx = self._unit_combo.findText(item.unit or "PCS")
-            if unit_idx >= 0:
-                self._unit_combo.setCurrentIndex(unit_idx)
+            unit_text = item.unit or "PCS"
+            self._unit_combo.set(unit_text)
 
-            # Convert cents to LKR for spin boxes
-            self._cost_spin.setValue(item.cost_price_cents / 100.0)
-            self._sell_spin.setValue(item.sell_price_cents / 100.0)
+            self._cost_var.set(f"{item.cost_price_cents / 100.0:.2f}")
+            self._sell_var.set(f"{item.sell_price_cents / 100.0:.2f}")
 
-            # In edit mode, stock is managed via Adjust Stock dialog
-            self._stock_spin.setValue(item.quantity_in_stock)
-            self._stock_spin.setEnabled(False)
+            self._stock_var.set(item.quantity_in_stock)
+            self._stock_spin.config(state="disabled")
 
-            self._reorder_spin.setValue(item.reorder_level)
+            self._reorder_var.set(item.reorder_level)
+
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 2
+        self.geometry(f"+{x}+{y}")
 
     # ── Private ─────────────────────────────────────────────────────
 
     def _on_save(self):
-        """Validate required fields and accept the dialog."""
-        item_code = self._item_code_input.text().strip()
-        name = self._name_input.text().strip()
+        item_code = self._item_code_input.get().strip()
+        name = self._name_input.get().strip()
 
         if not item_code:
-            QMessageBox.warning(self, "Validation", "Item Code is required.")
-            self._item_code_input.setFocus()
+            messagebox.showwarning("Validation", "Item Code is required.", parent=self)
+            self._item_code_input.focus_set()
             return
         if not name:
-            QMessageBox.warning(self, "Validation", "Name is required.")
-            self._name_input.setFocus()
+            messagebox.showwarning("Validation", "Name is required.", parent=self)
+            self._name_input.focus_set()
             return
 
-        self.accept()
+        try:
+            cost_cents = int(round(float(self._cost_var.get()) * 100))
+        except (ValueError, tk.TclError):
+            cost_cents = 0
 
-    # ── Public API ──────────────────────────────────────────────────
+        try:
+            sell_cents = int(round(float(self._sell_var.get()) * 100))
+        except (ValueError, tk.TclError):
+            sell_cents = 0
 
-    def get_data(self) -> dict:
-        """Return a dict of all form field values with prices converted to cents."""
-        return {
-            "item_code": self._item_code_input.text(),
-            "name": self._name_input.text(),
-            "description": self._description_input.toPlainText(),
-            "category": self._category_combo.currentText().strip(),
-            "brand": self._brand_input.text(),
-            "unit": self._unit_combo.currentText(),
-            "cost_price_cents": int(round(self._cost_spin.value() * 100)),
-            "sell_price_cents": int(round(self._sell_spin.value() * 100)),
-            "quantity_in_stock": self._stock_spin.value(),
-            "reorder_level": self._reorder_spin.value(),
+        self.result = {
+            "item_code": self._item_code_input.get(),
+            "name": self._name_input.get(),
+            "description": self._description_input.get("1.0", "end-1c"),
+            "category": self._category_combo.get().strip(),
+            "brand": self._brand_input.get(),
+            "unit": self._unit_combo.get(),
+            "cost_price_cents": cost_cents,
+            "sell_price_cents": sell_cents,
+            "quantity_in_stock": self._stock_var.get(),
+            "reorder_level": self._reorder_var.get(),
         }
+        self.destroy()
+
+    def _on_cancel(self):
+        self.result = None
+        self.destroy()
 
 
 # ─── Adjust Stock Dialog ────────────────────────────────────────────
 
-class AdjustStockDialog(QDialog):
+class AdjustStockDialog(tk.Toplevel):
     """Dialog for adjusting stock levels on an inventory item."""
 
     TXN_TYPES = ["IN", "OUT", "ADJUSTMENT"]
 
-    def __init__(self, parent=None, item=None):
-        super().__init__(parent)
+    def __init__(self, parent=None, item=None, **kwargs):
+        super().__init__(parent, **kwargs)
 
+        self.result = None
         self._item = item
 
-        self.setWindowTitle(f"Adjust Stock — {item.item_code}")
-        self.setMinimumWidth(440)
-        self.setModal(True)
+        self.title(f"Adjust Stock — {item.item_code}")
+        self.configure(bg=COLOR_APP_BG)
+        self.grab_set()
+        self.transient(parent)
+        self.minsize(460, 380)
 
         # ── Main layout ──
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(SPACING_LG, SPACING_LG, SPACING_LG, SPACING_LG)
-        outer.setSpacing(SPACING_MD)
+        outer = tk.Frame(self, bg=COLOR_APP_BG, padx=SPACING_LG, pady=SPACING_LG)
+        outer.pack(fill="both", expand=True)
 
         # ── Current stock display ──
-        info_layout = QHBoxLayout()
-        info_layout.setSpacing(SPACING_SM)
+        info_frame = tk.Frame(outer, bg=COLOR_APP_BG)
+        info_frame.pack(fill="x", pady=(0, SPACING_MD))
 
-        code_label = QLabel(f"Item: {item.item_code} — {item.name}")
-        code_label.setStyleSheet(
-            f"font-weight: bold; font-size: {FONT_BODY}px; "
-            f"color: {COLOR_TEXT_PRIMARY}; background: transparent; border: none;"
-        )
-        info_layout.addWidget(code_label)
-        info_layout.addStretch()
+        tk.Label(
+            info_frame, text=f"Item: {item.item_code} — {item.name}",
+            font=(FONT_FAMILY, FONT_BODY, "bold"), fg=COLOR_TEXT_PRIMARY, bg=COLOR_APP_BG,
+        ).pack(side="left")
 
         stock_color = COLOR_ERROR if item.is_low_stock else COLOR_SUCCESS
-        self._current_stock_label = QLabel(f"Current Stock: {item.quantity_in_stock}")
-        self._current_stock_label.setStyleSheet(
-            f"font-weight: bold; font-size: {FONT_BODY}px; "
-            f"color: {stock_color}; background: transparent; border: none;"
-        )
-        info_layout.addWidget(self._current_stock_label)
-
-        outer.addLayout(info_layout)
+        tk.Label(
+            info_frame, text=f"Current Stock: {item.quantity_in_stock}",
+            font=(FONT_FAMILY, FONT_BODY, "bold"), fg=stock_color, bg=COLOR_APP_BG,
+        ).pack(side="right")
 
         # ── Form panel ──
-        form = FormPanel("Stock Adjustment")
+        form = FormPanel("Stock Adjustment", parent=outer)
 
         # Transaction Type
-        self._txn_type_combo = QComboBox()
-        self._txn_type_combo.setFixedHeight(INPUT_HEIGHT)
-        self._txn_type_combo.addItems(self.TXN_TYPES)
+        self._txn_type_combo = ttk.Combobox(
+            form, values=self.TXN_TYPES, state="readonly", width=15,
+        )
+        self._txn_type_combo.set("IN")
         form.add_row("Transaction Type", self._txn_type_combo)
 
         # Quantity
-        self._qty_spin = QSpinBox()
-        self._qty_spin.setRange(1, 10000)
-        self._qty_spin.setValue(1)
-        self._qty_spin.setFixedHeight(INPUT_HEIGHT)
+        self._qty_var = tk.IntVar(value=1)
+        self._qty_spin = ttk.Spinbox(form, from_=1, to=10000, textvariable=self._qty_var, width=10)
         form.add_row("Quantity", self._qty_spin)
 
         form.add_separator()
 
         # Reference (optional)
-        self._reference_input = QLineEdit()
-        self._reference_input.setPlaceholderText("Reference (optional)")
-        self._reference_input.setFixedHeight(INPUT_HEIGHT)
+        self._reference_input = tk.Entry(form, font=(FONT_FAMILY, FONT_BODY))
         form.add_row("Reference", self._reference_input)
 
         # Notes (optional)
-        self._notes_input = QTextEdit()
-        self._notes_input.setPlaceholderText("Notes (optional)")
-        self._notes_input.setFixedHeight(72)
+        self._notes_input = tk.Text(form, font=(FONT_FAMILY, FONT_BODY), height=3, wrap="word")
         form.add_row("Notes", self._notes_input)
 
-        outer.addWidget(form)
-
         # ── Dialog buttons ──
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(SPACING_SM)
-        btn_layout.addStretch()
+        btn_frame = tk.Frame(outer, bg=COLOR_APP_BG)
+        btn_frame.pack(fill="x", pady=(SPACING_MD, 0))
+        tk.Frame(btn_frame, bg=COLOR_APP_BG).pack(side="left", fill="x", expand=True)
+        ttk.Button(btn_frame, text="Cancel", command=self._on_cancel,
+                    style="Secondary.TButton").pack(side="right", padx=(SPACING_SM, 0))
+        ttk.Button(btn_frame, text="Save Adjustment", command=self._on_save,
+                    style="Primary.TButton").pack(side="right")
 
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("btn_secondary")
-        cancel_btn.setFixedHeight(BUTTON_HEIGHT)
-        cancel_btn.setMinimumWidth(100)
-        cancel_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(cancel_btn)
-
-        save_btn = QPushButton("Save Adjustment")
-        save_btn.setObjectName("btn_primary")
-        save_btn.setFixedHeight(BUTTON_HEIGHT)
-        save_btn.setMinimumWidth(120)
-        save_btn.clicked.connect(self._on_save)
-        btn_layout.addWidget(save_btn)
-
-        outer.addLayout(btn_layout)
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 2
+        self.geometry(f"+{x}+{y}")
 
     # ── Private ─────────────────────────────────────────────────────
 
     def _on_save(self):
-        """Validate and accept the dialog."""
-        qty = self._qty_spin.value()
+        qty = self._qty_var.get()
         if qty <= 0:
-            QMessageBox.warning(self, "Validation", "Quantity must be at least 1.")
+            messagebox.showwarning("Validation", "Quantity must be at least 1.", parent=self)
             return
 
         # Warn on OUT if quantity exceeds current stock
-        if self._txn_type_combo.currentText() == "OUT":
+        if self._txn_type_combo.get() == "OUT":
             if qty > self._item.quantity_in_stock:
-                reply = QMessageBox.warning(
-                    self,
+                reply = messagebox.askyesno(
                     "Insufficient Stock",
                     f"Quantity ({qty}) exceeds current stock ({self._item.quantity_in_stock}).\n"
                     "Continue anyway?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
+                    default="no",
+                    parent=self,
                 )
-                if reply != QMessageBox.StandardButton.Yes:
+                if not reply:
                     return
 
-        self.accept()
-
-    # ── Public API ──────────────────────────────────────────────────
-
-    def get_data(self) -> dict:
-        """Return a dict of the adjustment form values."""
-        return {
-            "txn_type": self._txn_type_combo.currentText(),
-            "quantity": self._qty_spin.value(),
-            "reference": self._reference_input.text(),
-            "notes": self._notes_input.toPlainText(),
+        self.result = {
+            "txn_type": self._txn_type_combo.get(),
+            "quantity": qty,
+            "reference": self._reference_input.get(),
+            "notes": self._notes_input.get("1.0", "end-1c"),
         }
+        self.destroy()
+
+    def _on_cancel(self):
+        self.result = None
+        self.destroy()

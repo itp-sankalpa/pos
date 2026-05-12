@@ -1,14 +1,13 @@
 """
-DataTable — reusable QTableWidget wrapper for the Vehicle Service POS.
+DataTable — reusable ttk.Treeview wrapper for the Vehicle Service POS.
 """
 
-from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
-from PyQt6.QtCore import Qt
+import tkinter as tk
+from tkinter import ttk
+from ui.theme import TABLE_ROW_HEIGHT, TABLE_HEADER_HEIGHT, COLOR_PANEL_BG, COLOR_SELECTED_ROW_BG
 
-from ui.theme import TABLE_ROW_HEIGHT, TABLE_HEADER_HEIGHT
 
-
-class DataTable(QTableWidget):
+class DataTable(ttk.Frame):
     """A styled, read-only data table with single-row selection.
 
     Parameters
@@ -16,50 +15,52 @@ class DataTable(QTableWidget):
     columns : list[tuple[str, int]]
         Each tuple is (header_text, column_width_px). Width 0 means the
         column stretches to fill remaining space.
-    parent : QWidget, optional
+    parent : Widget, optional
     """
 
-    def __init__(self, columns: list[tuple[str, int]], parent=None):
-        super().__init__(parent)
-
+    def __init__(self, columns: list[tuple[str, int]], parent=None, **kwargs):
+        super().__init__(parent, **kwargs)
         self._columns = columns
+        self._col_ids = [f"col{i}" for i in range(len(columns))]
+        self._double_click_callback = None
 
-        # --- Basic table setup ---
-        self.setColumnCount(len(columns))
-        self.setHorizontalHeaderLabels([col[0] for col in columns])
-        self.setAlternatingRowColors(True)
-        self.setSortingEnabled(False)
+        # Create treeview
+        self._tree = ttk.Treeview(
+            self,
+            columns=self._col_ids,
+            show="headings",
+            selectmode="browse",
+            height=15,
+        )
 
-        # Read-only
-        self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-
-        # Single-row selection
-        self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-
-        # Header stretch for zero-width columns
-        header = self.horizontalHeader()
-        for idx, (_, width) in enumerate(columns):
+        for idx, (header, width) in enumerate(columns):
+            col_id = self._col_ids[idx]
+            self._tree.heading(col_id, text=header)
             if width == 0:
-                header.setSectionResizeMode(idx, QHeaderView.ResizeMode.Stretch)
+                self._tree.column(col_id, width=200, stretch=True)
             else:
-                header.setSectionResizeMode(idx, QHeaderView.ResizeMode.Fixed)
-                self.setColumnWidth(idx, width)
+                self._tree.column(col_id, width=width, stretch=False, minwidth=width)
 
-        # Row / header heights
-        self.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
-        self.verticalHeader().setVisible(False)
-        self.horizontalHeader().setFixedHeight(TABLE_HEADER_HEIGHT)
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(self, orient="vertical", command=self._tree.yview)
+        self._tree.configure(yscrollcommand=scrollbar.set)
 
-        # Hide grid for cleaner look (global QSS handles border)
-        self.setShowGrid(True)
+        # Pack
+        self._tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
-        # Scroll hints
-        self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
-        self.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        # Bind double-click
+        self._tree.bind("<Double-1>", self._on_double_click)
 
-        # Object name so global QSS targets QTableWidget properly
-        self.setObjectName("data_table")
+    # ── Private ───────────────────────────────────────────────────
+
+    def _on_double_click(self, event):
+        if self._double_click_callback:
+            selected = self._tree.selection()
+            if selected:
+                item_id = selected[0]
+                index = self._tree.index(item_id)
+                self._double_click_callback(index)
 
     # ── Public API ────────────────────────────────────────────────
 
@@ -69,35 +70,42 @@ class DataTable(QTableWidget):
         Each inner list should have the same length as *columns*.
         Items are converted to strings via ``str()``.
         """
-        self.setRowCount(0)
+        self._tree.delete(*self._tree.get_children())
         for row_idx, row_data in enumerate(rows):
-            self.insertRow(row_idx)
-            for col_idx, value in enumerate(row_data):
-                item = QTableWidgetItem(str(value))
-                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                # Store the raw value in the UserRole for potential retrieval
-                item.setData(Qt.ItemDataRole.UserRole, value)
-                self.setItem(row_idx, col_idx, item)
-        self.setRowCount(len(rows))
+            str_data = [str(v) for v in row_data]
+            tag = "even" if row_idx % 2 == 0 else "odd"
+            self._tree.insert("", "end", values=str_data, tags=(tag,))
+        self._tree.tag_configure("even", background=COLOR_PANEL_BG)
+        self._tree.tag_configure("odd", background="#F8F9FA")
 
     def get_selected_row(self) -> int:
         """Return the index of the currently selected row, or -1 if none."""
-        rows = self.selectionModel().selectedRows()
-        if rows:
-            return rows[0].row()
-        return -1
+        selected = self._tree.selection()
+        if not selected:
+            return -1
+        return self._tree.index(selected[0])
 
     def get_selected_data(self, col: int) -> str:
         """Return the text from *col* of the currently selected row.
 
         Returns an empty string if nothing is selected.
         """
-        row = self.get_selected_row()
-        if row < 0:
+        selected = self._tree.selection()
+        if not selected:
             return ""
-        item = self.item(row, col)
-        return item.text() if item else ""
+        item = self._tree.item(selected[0])
+        values = item.get("values", [])
+        if col < len(values):
+            return str(values[col])
+        return ""
 
     def set_double_click_handler(self, callback) -> None:
-        """Connect *callback* to ``cellDoubleClicked`` signal."""
-        self.cellDoubleClicked.connect(callback)
+        """Connect *callback* to double-click on a row.
+
+        callback receives the row index as its argument.
+        """
+        self._double_click_callback = callback
+
+    def set_cell_widget(self, row: int, col: int, widget) -> None:
+        """Not supported in Treeview — status badges handled differently."""
+        pass

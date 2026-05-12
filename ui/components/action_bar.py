@@ -2,67 +2,39 @@
 ActionBar — horizontal button bar for page-level actions.
 """
 
-from PyQt6.QtWidgets import (
-    QWidget,
-    QHBoxLayout,
-    QVBoxLayout,
-    QPushButton,
-    QSpacerItem,
-    QSizePolicy,
-    QFrame,
-)
-from PyQt6.QtCore import Qt
-
-from ui.theme import (
-    COLOR_BORDER,
-    SPACING_SM,
-    SPACING_MD,
-)
+import tkinter as tk
+from tkinter import ttk
+from ui.theme import COLOR_BORDER, SPACING_SM, SPACING_MD
 
 
-class ActionBar(QWidget):
+class ActionBar(ttk.Frame):
     """Bottom-aligned horizontal bar holding action buttons.
 
-    Buttons are added from left to right, with an optional stretch
+    Buttons are added from right to left, with an optional stretch
     spacer to push them apart.
 
     Parameters
     ----------
-    parent : QWidget, optional
+    parent : Widget, optional
     """
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, parent=None, **kwargs):
+        super().__init__(parent, **kwargs)
 
-        # ── Outer vertical layout: top-border + button row ──
-        self._outer = QVBoxLayout(self)
-        self._outer.setContentsMargins(0, 0, 0, 0)
-        self._outer.setSpacing(0)
+        # Top border
+        sep = ttk.Separator(self, orient="horizontal")
+        sep.pack(fill="x", pady=(0, SPACING_SM))
 
-        # ── Top border line ──
-        self._border = QFrame()
-        self._border.setFrameShape(QFrame.Shape.HLine)
-        self._border.setFixedHeight(1)
-        self._border.setStyleSheet(
-            f"background-color: {COLOR_BORDER}; border: none;"
-        )
-        self._outer.addWidget(self._border)
+        # Button container (right-aligned)
+        self._btn_frame = ttk.Frame(self)
+        self._btn_frame.pack(fill="x", padx=(0, SPACING_MD))
 
-        # ── Button row container ──
-        self._btn_container = QWidget()
-        self._btn_layout = QHBoxLayout(self._btn_container)
-        self._btn_layout.setContentsMargins(0, SPACING_SM, SPACING_MD, SPACING_SM)
-        self._btn_layout.setSpacing(SPACING_SM)
-        # Trailing spacer pushes buttons to the right
-        self._btn_layout.addSpacerItem(
-            QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        )
-
-        self._outer.addWidget(self._btn_container)
+        # Buttons will be packed from right
+        self._buttons = []
 
     # ── Public API ────────────────────────────────────────────────
 
-    def add_button(self, text: str, callback, button_id: str = "btn_primary") -> QPushButton:
+    def add_button(self, text: str, callback, button_id: str = "btn_primary") -> ttk.Button:
         """Add a button to the action bar.
 
         Parameters
@@ -72,23 +44,27 @@ class ActionBar(QWidget):
         callback : callable
             Invoked on click.
         button_id : str
-            QSS object-name id — ``btn_primary`` (default), ``btn_secondary``,
+            Style identifier — ``btn_primary`` (default), ``btn_secondary``,
             ``btn_danger``, ``btn_success``.
 
         Returns
         -------
-        QPushButton
+        ttk.Button
         """
-        btn = QPushButton(text)
-        btn.setObjectName(button_id)
-        btn.clicked.connect(callback)
-        # Insert before the trailing spacer (last item)
-        self._btn_layout.insertWidget(self._btn_layout.count() - 1, btn)
+        style_map = {
+            "btn_primary": "Primary.TButton",
+            "btn_secondary": "Secondary.TButton",
+            "btn_danger": "Danger.TButton",
+            "btn_success": "Success.TButton",
+        }
+        style_name = style_map.get(button_id, "Primary.TButton")
+
+        btn = ttk.Button(self._btn_frame, text=text, command=callback, style=style_name)
+        btn.pack(side="right", padx=(SPACING_SM, 0))
+        self._buttons.append(btn)
         return btn
 
     def add_stretch(self) -> None:
-        """Add a horizontal spacer between button groups."""
-        self._btn_layout.insertSpacerItem(
-            self._btn_layout.count() - 1,
-            QSpacerItem(SPACING_MD, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum),
-        )
+        """Add spacer between button groups."""
+        spacer = ttk.Frame(self._btn_frame)
+        spacer.pack(side="right", padx=SPACING_MD)

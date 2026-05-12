@@ -3,17 +3,8 @@ DashboardScreen — main overview screen for the Vehicle Service Center POS.
 Displays summary cards, recent job cards, and quick revenue stats.
 """
 
-from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QSplitter,
-    QFrame,
-    QSpacerItem,
-    QSizePolicy,
-)
-from PyQt6.QtCore import Qt
+import tkinter as tk
+from tkinter import ttk
 
 from ui.theme import (
     COLOR_APP_BG,
@@ -42,12 +33,19 @@ from config import cents_to_display
 # ── Page indices in the stacked widget (sync with main window) ──────────
 PAGE_JOB_CARDS = 1
 
+# ── Month name map for revenue display ──────────────────────────────────
+_MONTH_NAMES = {
+    "01": "Jan", "02": "Feb", "03": "Mar", "04": "Apr",
+    "05": "May", "06": "Jun", "07": "Jul", "08": "Aug",
+    "09": "Sep", "10": "Oct", "11": "Nov", "12": "Dec",
+}
 
-class DashboardScreen(QWidget):
+
+class DashboardScreen(tk.Frame):
     """Dashboard overview screen with summary cards, recent jobs, and stats."""
 
-    def __init__(self, session, stacked_widget=None, parent=None):
-        super().__init__(parent)
+    def __init__(self, session, stacked_widget=None, parent=None, **kwargs):
+        super().__init__(parent, bg=COLOR_APP_BG, **kwargs)
 
         self._session = session
         self._stacked_widget = stacked_widget
@@ -56,18 +54,23 @@ class DashboardScreen(QWidget):
         # ── Keep references to SummaryCards for refresh ──
         self._cards: dict[str, SummaryCard] = {}
 
-        # ── Main layout ──
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(SPACING_LG, SPACING_LG, SPACING_LG, SPACING_LG)
-        main_layout.setSpacing(SPACING_MD)
+        # ── Keep references to revenue row widgets for refresh ──
+        self._revenue_widgets: list[tk.Frame] = []
+
+        # ── Main container ──
+        main_frame = tk.Frame(self, bg=COLOR_APP_BG)
+        main_frame.pack(fill="both", expand=True,
+                        padx=SPACING_LG, pady=SPACING_LG)
 
         # ── Page header ──
-        self._header = PageHeader("Dashboard", subtitle="Overview of your service center")
-        main_layout.addWidget(self._header)
+        self._header = PageHeader(
+            "Dashboard", subtitle="Overview of your service center",
+            parent=main_frame,
+        )
 
         # ── Summary cards row ──
-        cards_layout = QHBoxLayout()
-        cards_layout.setSpacing(SPACING_SM)
+        cards_frame = tk.Frame(main_frame, bg=COLOR_APP_BG)
+        cards_frame.pack(fill="x", pady=(0, SPACING_MD))
 
         card_defs = [
             ("today_jobs",      "Today's Jobs",      COLOR_ACCENT),
@@ -79,115 +82,98 @@ class DashboardScreen(QWidget):
         ]
 
         for key, title, accent in card_defs:
-            card = SummaryCard(title, value="0", accent_color=accent)
+            card = SummaryCard(
+                title, value="0", accent_color=accent,
+                parent=cards_frame,
+            )
             self._cards[key] = card
-            cards_layout.addWidget(card)
+            card.pack(side="left", padx=(0, SPACING_SM))
 
-        # Push cards to the left; absorb extra horizontal space
-        cards_layout.addSpacerItem(
-            QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        )
-        main_layout.addLayout(cards_layout)
-
-        # ── Splitter: recent jobs (left) | quick stats (right) ──
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setHandleWidth(SPACING_XS)
+        # ── Split view: recent jobs (left) | revenue stats (right) ──
+        split_frame = tk.Frame(main_frame, bg=COLOR_APP_BG)
+        split_frame.pack(fill="both", expand=True)
+        split_frame.columnconfigure(0, weight=3)
+        split_frame.columnconfigure(1, weight=2)
+        split_frame.rowconfigure(0, weight=1)
 
         # -- LEFT: Recent Job Cards panel --
-        left_panel = self._build_recent_jobs_panel()
-        splitter.addWidget(left_panel)
+        left_panel = self._build_recent_jobs_panel(split_frame)
+        left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, SPACING_XS))
 
-        # -- RIGHT: Quick Stats panel --
-        right_panel = self._build_quick_stats_panel()
-        splitter.addWidget(right_panel)
-
-        # Initial sizes: 60 % left, 40 % right
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 2)
-
-        main_layout.addWidget(splitter, stretch=1)
+        # -- RIGHT: Monthly Revenue panel --
+        right_panel = self._build_revenue_panel(split_frame)
+        right_panel.grid(row=0, column=1, sticky="nsew")
 
         # ── Initial data load ──
         self.refresh()
 
     # ── Panel builders ───────────────────────────────────────────────
 
-    def _build_recent_jobs_panel(self) -> QFrame:
+    def _build_recent_jobs_panel(self, parent) -> tk.Frame:
         """Build the left panel containing the recent job cards table."""
-        panel = QFrame()
-        panel.setObjectName("panel")
-        panel.setStyleSheet(
-            f"QFrame#panel {{ background-color: {COLOR_PANEL_BG}; "
-            f"border: 1px solid {COLOR_BORDER}; border-radius: 6px; }}"
+        panel = tk.Frame(
+            parent, bg=COLOR_PANEL_BG,
+            highlightbackground=COLOR_BORDER, highlightthickness=1,
         )
 
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
-        layout.setSpacing(SPACING_SM)
+        layout = tk.Frame(panel, bg=COLOR_PANEL_BG)
+        layout.pack(fill="both", expand=True,
+                    padx=SPACING_MD, pady=SPACING_MD)
 
         # Section title
-        title_label = QLabel("Recent Job Cards")
-        title_label.setObjectName("section_title")
-        title_label.setStyleSheet(
-            f"font-size: {FONT_SECTION_TITLE}px; font-weight: bold; "
-            f"color: {COLOR_TEXT_PRIMARY}; background: transparent; border: none;"
+        title_label = tk.Label(
+            layout, text="Recent Job Cards",
+            font=(FONT_FAMILY, FONT_SECTION_TITLE, "bold"),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG, anchor="w",
         )
-        layout.addWidget(title_label)
+        title_label.pack(fill="x", pady=(0, SPACING_SM))
 
-        # Table columns: (header_text, column_width_px) — 0 means stretch
+        # Table columns: (header_text, column_width_px)
         self._jobs_table = DataTable(
             columns=[
-                ("Job #",  100),
+                ("Job #",   100),
                 ("Vehicle", 160),
                 ("Customer", 150),
-                ("Status",  120),
-                ("Date",    110),
-            ]
+                ("Status",   120),
+                ("Date",     110),
+            ],
+            parent=layout,
         )
         self._jobs_table.set_double_click_handler(self._on_job_double_clicked)
-        layout.addWidget(self._jobs_table)
+        self._jobs_table.pack(fill="both", expand=True)
 
         return panel
 
-    def _build_quick_stats_panel(self) -> QFrame:
+    def _build_revenue_panel(self, parent) -> tk.Frame:
         """Build the right panel showing monthly revenue stats."""
-        panel = QFrame()
-        panel.setObjectName("panel")
-        panel.setStyleSheet(
-            f"QFrame#panel {{ background-color: {COLOR_PANEL_BG}; "
-            f"border: 1px solid {COLOR_BORDER}; border-radius: 6px; }}"
+        panel = tk.Frame(
+            parent, bg=COLOR_PANEL_BG,
+            highlightbackground=COLOR_BORDER, highlightthickness=1,
         )
 
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
-        layout.setSpacing(SPACING_SM)
+        layout = tk.Frame(panel, bg=COLOR_PANEL_BG)
+        layout.pack(fill="both", expand=True,
+                    padx=SPACING_MD, pady=SPACING_MD)
 
         # Section title
-        title_label = QLabel("Quick Stats")
-        title_label.setObjectName("section_title")
-        title_label.setStyleSheet(
-            f"font-size: {FONT_SECTION_TITLE}px; font-weight: bold; "
-            f"color: {COLOR_TEXT_PRIMARY}; background: transparent; border: none;"
+        title_label = tk.Label(
+            layout, text="Monthly Revenue",
+            font=(FONT_FAMILY, FONT_SECTION_TITLE, "bold"),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG, anchor="w",
         )
-        layout.addWidget(title_label)
+        title_label.pack(fill="x", pady=(0, SPACING_XS))
 
         # Subtitle
-        subtitle_label = QLabel("Monthly Revenue (last 6 months)")
-        subtitle_label.setStyleSheet(
-            f"font-size: {FONT_SMALL}px; color: {COLOR_TEXT_SECONDARY}; "
-            f"background: transparent; border: none;"
+        subtitle_label = tk.Label(
+            layout, text="Last 6 months",
+            font=(FONT_FAMILY, FONT_SMALL),
+            fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG, anchor="w",
         )
-        layout.addWidget(subtitle_label)
+        subtitle_label.pack(fill="x", pady=(0, SPACING_SM))
 
-        # Revenue rows will be populated dynamically
-        self._revenue_container = QVBoxLayout()
-        self._revenue_container.setSpacing(SPACING_XS)
-        layout.addLayout(self._revenue_container)
-
-        # Push content to top
-        layout.addSpacerItem(
-            QSpacerItem(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
-        )
+        # Revenue rows will be populated dynamically in this container
+        self._revenue_container = tk.Frame(layout, bg=COLOR_PANEL_BG)
+        self._revenue_container.pack(fill="both", expand=True)
 
         return panel
 
@@ -231,11 +217,7 @@ class DashboardScreen(QWidget):
         except Exception:
             jobs = []
 
-        # Build row data (status column will be replaced with StatusBadge)
-        status_col = 3  # index of the Status column
         rows = []
-        statuses = []
-
         for job in jobs:
             vehicle_display = ""
             if job.vehicle:
@@ -256,41 +238,20 @@ class DashboardScreen(QWidget):
                 job.status,
                 date_display,
             ])
-            statuses.append(job.status)
 
         self._jobs_table.load_data(rows)
 
-        # Replace status column cells with StatusBadge widgets
-        for row_idx, status_text in enumerate(statuses):
-            badge = StatusBadge(status_text)
-            self._jobs_table.setCellWidget(row_idx, status_col, badge)
-
     def _load_monthly_revenue(self) -> None:
-        """Populate the quick stats revenue rows."""
+        """Populate the monthly revenue rows."""
         # Clear existing revenue rows
-        while self._revenue_container.count():
-            item = self._revenue_container.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-            # Also handle layout items
-            if item.layout():
-                # Recursively clear sub-layouts
-                while item.layout().count():
-                    sub = item.layout().takeAt(0)
-                    if sub.widget():
-                        sub.widget().deleteLater()
+        for widget in self._revenue_widgets:
+            widget.destroy()
+        self._revenue_widgets.clear()
 
         try:
             revenue_data = self._controller.get_monthly_revenue(months=6)
         except Exception:
             revenue_data = []
-
-        # Map short month keys to friendlier display (e.g. "2025-01" → "Jan 2025")
-        month_names = {
-            "01": "Jan", "02": "Feb", "03": "Mar", "04": "Apr",
-            "05": "May", "06": "Jun", "07": "Jul", "08": "Aug",
-            "09": "Sep", "10": "Oct", "11": "Nov", "12": "Dec",
-        }
 
         for entry in revenue_data:
             month_key = entry.get("month", "")
@@ -300,40 +261,42 @@ class DashboardScreen(QWidget):
             display_month = month_key
             if len(month_key) == 7 and "-" in month_key:
                 year_part, mon_part = month_key.split("-", 1)
-                display_month = f"{month_names.get(mon_part, mon_part)} {year_part}"
+                display_month = f"{_MONTH_NAMES.get(mon_part, mon_part)} {year_part}"
 
-            row_layout = QHBoxLayout()
-            row_layout.setSpacing(SPACING_SM)
+            # Row frame
+            row_frame = tk.Frame(self._revenue_container, bg=COLOR_PANEL_BG)
+            row_frame.pack(fill="x", pady=SPACING_XS)
 
-            month_label = QLabel(display_month)
-            month_label.setStyleSheet(
-                f"font-size: {FONT_BODY}px; color: {COLOR_TEXT_SECONDARY}; "
-                f"background: transparent; border: none;"
+            # Month label
+            month_label = tk.Label(
+                row_frame, text=display_month,
+                font=(FONT_FAMILY, FONT_BODY),
+                fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG, anchor="w",
+                width=12,
             )
-            month_label.setMinimumWidth(90)
-            row_layout.addWidget(month_label)
+            month_label.pack(side="left")
 
             # Accent dot
-            dot_label = QLabel("●")
-            dot_label.setStyleSheet(
-                f"font-size: 10px; color: {COLOR_ACCENT}; "
-                f"background: transparent; border: none;"
+            dot_label = tk.Label(
+                row_frame, text="\u25CF",
+                font=(FONT_FAMILY, 10),
+                fg=COLOR_ACCENT, bg=COLOR_PANEL_BG,
             )
-            row_layout.addWidget(dot_label)
+            dot_label.pack(side="left", padx=(SPACING_XS, SPACING_XS))
 
-            revenue_label = QLabel(cents_to_display(revenue_cents))
-            revenue_label.setStyleSheet(
-                f"font-size: {FONT_BODY}px; font-weight: bold; "
-                f"color: {COLOR_TEXT_PRIMARY}; background: transparent; border: none;"
+            # Revenue label
+            revenue_label = tk.Label(
+                row_frame, text=cents_to_display(revenue_cents),
+                font=(FONT_FAMILY, FONT_BODY, "bold"),
+                fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG, anchor="w",
             )
-            row_layout.addWidget(revenue_label)
+            revenue_label.pack(side="left")
 
-            row_layout.addStretch()
-            self._revenue_container.addLayout(row_layout)
+            self._revenue_widgets.append(row_frame)
 
     # ── Event handlers ───────────────────────────────────────────────
 
-    def _on_job_double_clicked(self, row: int, column: int) -> None:
+    def _on_job_double_clicked(self, row_index: int) -> None:
         """Handle double-click on a job row — navigate to Job Cards screen."""
         if self._stacked_widget is not None:
             self._stacked_widget.setCurrentIndex(PAGE_JOB_CARDS)

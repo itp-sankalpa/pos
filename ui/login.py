@@ -1,14 +1,10 @@
 """
-Login screen for the Vehicle Service Center POS application.
+Login screen for the Vehicle Service Center POS application (Tkinter version).
 Displays a centered login card on a grey background.
 """
 
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QMessageBox, QFrame, QSizePolicy,
-)
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
+import tkinter as tk
+from tkinter import ttk, messagebox
 
 from ui.theme import (
     COLOR_APP_BG, COLOR_PANEL_BG, COLOR_TEXT_PRIMARY,
@@ -20,230 +16,181 @@ from ui.theme import (
 from controllers.auth_controller import AuthController
 
 
-class LoginScreen(QWidget):
+class LoginScreen(tk.Tk):
     """Centered login form with app branding, username/password fields, and login button."""
 
-    # Emitted with the authenticated User object on successful login
-    login_successful = pyqtSignal(object)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, on_login_success=None):
+        super().__init__()
         self._auth = AuthController()
+        self._on_login_success = on_login_success
+
+        self.title("Vehicle Service POS — Login")
+        self.geometry(f"500x600")
+        self.resizable(False, False)
+        self.configure(bg=COLOR_APP_BG)
+
         self._build_ui()
+
+        # Center window on screen
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - 500) // 2
+        y = (self.winfo_screenheight() - 600) // 2
+        self.geometry(f"+{x}+{y}")
 
     # ── UI Construction ──────────────────────────────────────────────
 
     def _build_ui(self):
-        # Outer layout fills the entire widget, centres the card
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
-
-        # Grey background
-        self.setAutoFillBackground(True)
-        self.setStyleSheet(f"background-color: {COLOR_APP_BG};")
+        # Outer container - centres the card
+        outer = tk.Frame(self, bg=COLOR_APP_BG)
+        outer.pack(fill="both", expand=True)
 
         # Vertical spacer above the card
-        outer.addStretch(1)
+        spacer_top = tk.Frame(outer, bg=COLOR_APP_BG)
+        spacer_top.pack(fill="both", expand=True)
 
-        # ── Card ─────────────────────────────────────────────────
-        card = QFrame()
-        card.setObjectName("loginCard")
-        card.setFixedWidth(400)
-        card.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
-        card.setStyleSheet(
-            f"""
-            QFrame#loginCard {{
-                background-color: {COLOR_PANEL_BG};
-                border: 1px solid {COLOR_BORDER};
-                border-radius: 10px;
-            }}
-            """
+        # Card container (centered)
+        card_container = tk.Frame(outer, bg=COLOR_APP_BG)
+        card_container.pack()
+
+        # Card
+        card = tk.Frame(
+            card_container, bg=COLOR_PANEL_BG,
+            padx=SPACING_XL, pady=SPACING_XL,
+            highlightbackground=COLOR_BORDER, highlightthickness=1,
         )
-
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(SPACING_XL, SPACING_XL, SPACING_XL, SPACING_XL)
-        card_layout.setSpacing(SPACING_MD)
+        card.pack()
 
         # App title
-        title = QLabel("Vehicle Service POS")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet(
-            f"font-size: {FONT_PAGE_TITLE}px; "
-            f"font-weight: bold; "
-            f"color: {COLOR_TEXT_PRIMARY}; "
-            f"background: transparent; border: none;"
+        title = tk.Label(
+            card, text="Vehicle Service POS",
+            font=(FONT_FAMILY, FONT_PAGE_TITLE, "bold"),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG,
         )
-        card_layout.addWidget(title)
+        title.pack(pady=(0, SPACING_SM))
 
         # Subtitle
-        subtitle = QLabel("Sign in to your account")
-        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet(
-            f"font-size: {FONT_SMALL}px; "
-            f"color: {COLOR_TEXT_SECONDARY}; "
-            f"background: transparent; border: none;"
+        subtitle = tk.Label(
+            card, text="Sign in to your account",
+            font=(FONT_FAMILY, FONT_SMALL),
+            fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG,
         )
-        card_layout.addWidget(subtitle)
-
-        card_layout.addSpacing(SPACING_LG)
+        subtitle.pack(pady=(0, SPACING_LG))
 
         # Username label
-        user_label = QLabel("Username")
-        user_label.setStyleSheet(
-            f"font-size: {FONT_SMALL}px; "
-            f"font-weight: bold; "
-            f"color: {COLOR_TEXT_PRIMARY}; "
-            f"background: transparent; border: none;"
+        user_label = tk.Label(
+            card, text="Username",
+            font=(FONT_FAMILY, FONT_SMALL, "bold"),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG, anchor="w",
         )
-        card_layout.addWidget(user_label)
+        user_label.pack(fill="x")
 
         # Username input
-        self.username_input = QLineEdit()
-        self.username_input.setPlaceholderText("Enter your username")
-        self.username_input.setFixedHeight(INPUT_HEIGHT)
-        self.username_input.setStyleSheet(
-            f"""
-            QLineEdit {{
-                border: 1px solid {COLOR_BORDER};
-                border-radius: 5px;
-                padding: 6px 12px;
-                font-size: {FONT_BODY}px;
-                background-color: {COLOR_PANEL_BG};
-                color: {COLOR_TEXT_PRIMARY};
-            }}
-            QLineEdit:focus {{
-                border-color: {COLOR_ACCENT};
-            }}
-            """
+        self.username_input = tk.Entry(
+            card, font=(FONT_FAMILY, FONT_BODY),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG,
+            insertbackground=COLOR_TEXT_PRIMARY,
+            relief="solid", bd=1, highlightthickness=1,
+            highlightcolor=COLOR_ACCENT, highlightbackground=COLOR_BORDER,
         )
-        card_layout.addWidget(self.username_input)
-
-        card_layout.addSpacing(SPACING_SM)
+        self.username_input.pack(fill="x", ipady=6, pady=(SPACING_XS, 0))
+        self.username_input.insert(0, "Enter your username")
+        self.username_input.config(fg="#999999")
+        self._user_placeholder = True
+        self.username_input.bind("<FocusIn>", self._user_focus_in)
+        self.username_input.bind("<FocusOut>", self._user_focus_out)
+        self.username_input.bind("<Return>", lambda e: self.password_input.focus_set())
 
         # Password label
-        pass_label = QLabel("Password")
-        pass_label.setStyleSheet(
-            f"font-size: {FONT_SMALL}px; "
-            f"font-weight: bold; "
-            f"color: {COLOR_TEXT_PRIMARY}; "
-            f"background: transparent; border: none;"
+        pass_label = tk.Label(
+            card, text="Password",
+            font=(FONT_FAMILY, FONT_SMALL, "bold"),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG, anchor="w",
         )
-        card_layout.addWidget(pass_label)
+        pass_label.pack(fill="x", pady=(SPACING_MD, 0))
 
         # Password input
-        self.password_input = QLineEdit()
-        self.password_input.setPlaceholderText("Enter your password")
-        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.password_input.setFixedHeight(INPUT_HEIGHT)
-        self.password_input.setStyleSheet(
-            f"""
-            QLineEdit {{
-                border: 1px solid {COLOR_BORDER};
-                border-radius: 5px;
-                padding: 6px 12px;
-                font-size: {FONT_BODY}px;
-                background-color: {COLOR_PANEL_BG};
-                color: {COLOR_TEXT_PRIMARY};
-            }}
-            QLineEdit:focus {{
-                border-color: {COLOR_ACCENT};
-            }}
-            """
+        self.password_input = tk.Entry(
+            card, font=(FONT_FAMILY, FONT_BODY),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG,
+            insertbackground=COLOR_TEXT_PRIMARY,
+            show="•", relief="solid", bd=1, highlightthickness=1,
+            highlightcolor=COLOR_ACCENT, highlightbackground=COLOR_BORDER,
         )
-        card_layout.addWidget(self.password_input)
-
-        card_layout.addSpacing(SPACING_LG)
+        self.password_input.pack(fill="x", ipady=6, pady=(SPACING_XS, 0))
+        self.password_input.bind("<Return>", lambda e: self._on_login())
 
         # Login button
-        self.login_button = QPushButton("Sign In")
-        self.login_button.setFixedHeight(BUTTON_HEIGHT + 6)
-        self.login_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.login_button.setStyleSheet(
-            f"""
-            QPushButton {{
-                background-color: {COLOR_ACCENT};
-                color: #FFFFFF;
-                border: none;
-                border-radius: 5px;
-                padding: 8px 16px;
-                font-size: {FONT_BUTTON}px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {COLOR_ACCENT_HOVER};
-            }}
-            QPushButton:pressed {{
-                background-color: #1449B8;
-            }}
-            QPushButton:disabled {{
-                background-color: #B0BEC5;
-                color: #ECEFF1;
-            }}
-            """
+        self.login_button = tk.Button(
+            card, text="Sign In",
+            font=(FONT_FAMILY, FONT_BUTTON, "bold"),
+            fg="#FFFFFF", bg=COLOR_ACCENT,
+            activeforeground="#FFFFFF", activebackground=COLOR_ACCENT_HOVER,
+            relief="flat", bd=0,
+            cursor="hand2", pady=8,
+            command=self._on_login,
         )
-        card_layout.addWidget(self.login_button)
-
-        # ── Signals ──────────────────────────────────────────────
-        self.login_button.clicked.connect(self._on_login)
-        self.password_input.returnPressed.connect(self._on_login)
-        self.username_input.returnPressed.connect(self.password_input.setFocus)
-
-        # Centre the card horizontally in the outer layout
-        card_row = QHBoxLayout()
-        card_row.addStretch(1)
-        card_row.addWidget(card)
-        card_row.addStretch(1)
-        outer.addLayout(card_row)
+        self.login_button.pack(fill="x", pady=(SPACING_LG, 0))
 
         # Vertical spacer below the card
-        outer.addStretch(1)
+        spacer_bottom = tk.Frame(outer, bg=COLOR_APP_BG)
+        spacer_bottom.pack(fill="both", expand=True)
+
+    # ── Placeholder handling ────────────────────────────────────────
+
+    def _user_focus_in(self, event):
+        if self._user_placeholder:
+            self.username_input.delete(0, "end")
+            self.username_input.config(fg=COLOR_TEXT_PRIMARY)
+            self._user_placeholder = False
+
+    def _user_focus_out(self, event):
+        if not self.username_input.get().strip():
+            self.username_input.insert(0, "Enter your username")
+            self.username_input.config(fg="#999999")
+            self._user_placeholder = True
 
     # ── Handlers ─────────────────────────────────────────────────────
 
     def _on_login(self):
         """Validate inputs and attempt authentication via AuthController."""
-        username = self.username_input.text().strip()
-        password = self.password_input.text()
+        # Get username (handle placeholder)
+        if self._user_placeholder:
+            username = ""
+        else:
+            username = self.username_input.get().strip()
+
+        password = self.password_input.get()
 
         if not username:
-            self._show_error("Please enter your username.")
-            self.username_input.setFocus()
+            messagebox.showwarning("Login Failed", "Please enter your username.")
+            self.username_input.focus_set()
             return
 
         if not password:
-            self._show_error("Please enter your password.")
-            self.password_input.setFocus()
+            messagebox.showwarning("Login Failed", "Please enter your password.")
+            self.password_input.focus_set()
             return
 
         # Disable button while authenticating
-        self.login_button.setEnabled(False)
-        self.login_button.setText("Signing in…")
+        self.login_button.config(state="disabled", text="Signing in…")
+        self.update_idletasks()
 
         user = self._auth.login(username, password)
 
         if user is not None:
-            # Success — clear sensitive fields and emit signal
-            self.password_input.clear()
-            self.username_input.clear()
+            # Success — clear sensitive fields
+            self.password_input.delete(0, "end")
             self._reset_button()
-            self.login_successful.emit(user)
+            if self._on_login_success:
+                self._on_login_success(user)
         else:
             self._reset_button()
-            self._show_error("Invalid username or password.\nPlease try again.")
-            self.password_input.selectAll()
-            self.password_input.setFocus()
+            messagebox.showwarning(
+                "Login Failed",
+                "Invalid username or password.\nPlease try again.",
+            )
+            self.password_input.focus_set()
 
     def _reset_button(self):
         """Restore the login button to its default enabled state."""
-        self.login_button.setEnabled(True)
-        self.login_button.setText("Sign In")
-
-    def _show_error(self, message: str):
-        """Display an error QMessageBox with the given message."""
-        QMessageBox.warning(
-            self,
-            "Login Failed",
-            message,
-            QMessageBox.StandardButton.Ok,
-        )
+        self.login_button.config(state="normal", text="Sign In")

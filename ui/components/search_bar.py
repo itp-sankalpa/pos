@@ -2,9 +2,8 @@
 SearchBar — search input with optional filter combo and debounced callback.
 """
 
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLineEdit, QComboBox
-from PyQt6.QtCore import QTimer, Qt
-
+import tkinter as tk
+from tkinter import ttk
 from ui.theme import (
     COLOR_BORDER,
     COLOR_ACCENT,
@@ -16,7 +15,7 @@ from ui.theme import (
 )
 
 
-class SearchBar(QWidget):
+class SearchBar(ttk.Frame):
     """Horizontal search bar with an optional filter dropdown.
 
     Parameters
@@ -24,84 +23,87 @@ class SearchBar(QWidget):
     placeholder : str
         Placeholder text for the search input.
     filters : list[str], optional
-        List of filter options shown in a QComboBox. The first item
+        List of filter options shown in a Combobox. The first item
         should typically be an "All" / default option.
-    parent : QWidget, optional
+    parent : Widget, optional
     """
 
-    def __init__(self, placeholder: str = "Search...", filters: list[str] = None, parent=None):
-        super().__init__(parent)
+    def __init__(self, placeholder: str = "Search...", filters: list[str] = None, parent=None, **kwargs):
+        super().__init__(parent, **kwargs)
 
         self._search_callback = None
         self._filter_callback = None
+        self._debounce_id = None
 
-        # ── Layout ──
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(SPACING_SM)
-
-        # ── Search input ──
-        self._input = QLineEdit()
-        self._input.setPlaceholderText(placeholder)
-        self._input.setFixedHeight(INPUT_HEIGHT)
-        self._input.setStyleSheet(
-            f"QLineEdit {{ "
-            f"border: 1px solid {COLOR_BORDER}; "
-            f"border-radius: 4px; "
-            f"padding: 5px 10px; "
-            f"min-height: {INPUT_HEIGHT}px; "
-            f"background-color: {COLOR_PANEL_BG}; "
-            f"font-size: {FONT_BODY}px; "
-            f"color: {COLOR_TEXT_PRIMARY}; "
-            f"}}"
-            f"QLineEdit:focus {{ border-color: {COLOR_ACCENT}; }}"
+        # Search input
+        self._input_var = tk.StringVar()
+        self._input = tk.Entry(
+            self, textvariable=self._input_var, font=("Segoe UI", FONT_BODY),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG,
+            insertbackground=COLOR_TEXT_PRIMARY,
+            relief="solid", bd=1,
         )
-        layout.addWidget(self._input, stretch=1)
+        self._input.insert(0, placeholder)
+        self._input.config(fg="#999999")
+        self._input.bind("<FocusIn>", self._on_focus_in)
+        self._input.bind("<FocusOut>", self._on_focus_out)
+        self._input.bind("<KeyRelease>", self._on_key_release)
+        self._placeholder = placeholder
+        self._is_placeholder = True
 
-        # ── Debounce timer ──
-        self._debounce_timer = QTimer(self)
-        self._debounce_timer.setSingleShot(True)
-        self._debounce_timer.setInterval(300)
-        self._debounce_timer.timeout.connect(self._fire_search)
+        self._input.pack(side="left", fill="x", expand=True, padx=(0, SPACING_SM))
 
-        self._input.textChanged.connect(self._on_text_changed)
-
-        # ── Filter combo (optional) ──
-        self._combo: QComboBox | None = None
+        # Filter combo (optional)
+        self._combo: ttk.Combobox | None = None
         if filters:
-            self._combo = QComboBox()
-            self._combo.addItems(filters)
-            self._combo.setFixedHeight(INPUT_HEIGHT)
-            self._combo.setMinimumWidth(140)
-            self._combo.currentTextChanged.connect(self._on_filter_changed)
-            layout.addWidget(self._combo)
+            self._combo_var = tk.StringVar(value=filters[0])
+            self._combo = ttk.Combobox(
+                self, textvariable=self._combo_var, values=filters,
+                state="readonly", width=18,
+            )
+            self._combo.pack(side="right")
+            self._combo.bind("<<ComboboxSelected>>", self._on_filter_changed)
 
     # ── Private ───────────────────────────────────────────────────
 
-    def _on_text_changed(self, _text: str) -> None:
-        """Restart debounce timer on every keystroke."""
-        self._debounce_timer.start()
+    def _on_focus_in(self, event):
+        if self._is_placeholder:
+            self._input.delete(0, "end")
+            self._input.config(fg=COLOR_TEXT_PRIMARY)
+            self._is_placeholder = False
 
-    def _fire_search(self) -> None:
-        """Emit the debounced search callback with current text."""
+    def _on_focus_out(self, event):
+        if not self._input.get().strip():
+            self._input.insert(0, self._placeholder)
+            self._input.config(fg="#999999")
+            self._is_placeholder = True
+
+    def _on_key_release(self, event):
+        if self._debounce_id:
+            self.after_cancel(self._debounce_id)
+        self._debounce_id = self.after(300, self._fire_search)
+
+    def _fire_search(self):
         if self._search_callback:
-            self._search_callback(self._input.text())
+            text = self.text()
+            self._search_callback(text)
 
-    def _on_filter_changed(self, text: str) -> None:
-        """Forward filter changes to the registered callback."""
-        if self._filter_callback:
-            self._filter_callback(text)
+    def _on_filter_changed(self, event):
+        if self._filter_callback and self._combo:
+            self._filter_callback(self._combo.get())
 
     # ── Public API ────────────────────────────────────────────────
 
     def text(self) -> str:
-        """Return the current search text."""
-        return self._input.text()
+        """Return the current search text (empty if placeholder is shown)."""
+        if self._is_placeholder:
+            return ""
+        return self._input.get()
 
     def filter_text(self) -> str:
         """Return the current filter selection, or empty string if no combo."""
-        if self._combo is not None:
-            return self._combo.currentText()
+        if self._combo:
+            return self._combo.get()
         return ""
 
     def set_search_callback(self, callback) -> None:

@@ -9,67 +9,18 @@ import logging
 from datetime import datetime
 from typing import Optional, List
 
-from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QComboBox,
-    QTextEdit,
-    QLineEdit,
-    QSpinBox,
-    QDoubleSpinBox,
-    QTableWidget,
-    QTableWidgetItem,
-    QHeaderView,
-    QAbstractItemView,
-    QDialog,
-    QDialogButtonBox,
-    QFormLayout,
-    QFrame,
-    QSizePolicy,
-    QMessageBox,
-    QSplitter,
-    QGroupBox,
-)
-from PyQt6.QtCore import Qt, pyqtSignal
+import tkinter as tk
+from tkinter import ttk, messagebox
 
 from ui.theme import (
-    COLOR_APP_BG,
-    COLOR_PANEL_BG,
-    COLOR_TEXT_PRIMARY,
-    COLOR_TEXT_SECONDARY,
-    COLOR_BORDER,
-    COLOR_ACCENT,
-    COLOR_SUCCESS,
-    COLOR_WARNING,
-    COLOR_ERROR,
-    COLOR_INFO,
-    COLOR_SELECTED_ROW_BG,
-    FONT_FAMILY,
-    FONT_PAGE_TITLE,
-    FONT_SECTION_TITLE,
-    FONT_BODY,
-    FONT_BUTTON,
-    FONT_SMALL,
-    SPACING_XS,
-    SPACING_SM,
-    SPACING_MD,
-    SPACING_LG,
-    SPACING_XL,
-    BUTTON_HEIGHT,
-    INPUT_HEIGHT,
-    status_badge_qss,
+    COLOR_APP_BG, COLOR_PANEL_BG, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY,
+    COLOR_BORDER, COLOR_ACCENT, COLOR_SUCCESS, COLOR_WARNING, COLOR_ERROR,
+    COLOR_INFO, COLOR_SELECTED_ROW_BG, FONT_FAMILY, FONT_PAGE_TITLE,
+    FONT_SECTION_TITLE, FONT_BODY, FONT_BUTTON, FONT_SMALL,
+    SPACING_XS, SPACING_SM, SPACING_MD, SPACING_LG, SPACING_XL,
+    BUTTON_HEIGHT, INPUT_HEIGHT, status_badge_colors,
 )
-from ui.components import (
-    PageHeader,
-    SearchBar,
-    DataTable,
-    FormPanel,
-    StatusBadge,
-    ActionBar,
-)
+from ui.components import PageHeader, SearchBar, DataTable, FormPanel, StatusBadge, ActionBar
 from controllers.job_card_controller import JobCardController
 from controllers.vehicle_controller import VehicleController
 from controllers.customer_controller import CustomerController
@@ -84,11 +35,12 @@ logger = logging.getLogger(__name__)
 #  Main Screen
 # ═══════════════════════════════════════════════════════════════════
 
-class JobCardsScreen(QWidget):
+class JobCardsScreen(tk.Frame):
     """Job Cards listing screen with CRUD operations."""
 
-    def __init__(self, session, stacked_widget=None, parent=None):
-        super().__init__(parent)
+    def __init__(self, session, stacked_widget=None, parent=None, **kwargs):
+        super().__init__(parent, **kwargs)
+        self.configure(bg=COLOR_APP_BG)
 
         self._session = session
         self._stacked_widget = stacked_widget
@@ -104,33 +56,32 @@ class JobCardsScreen(QWidget):
         self._current_search = ""
         self._current_status_filter = "All"
 
+        # Cached data
+        self._job_cards_data: List = []
+
         self._build_ui()
         self.refresh()
 
     # ── UI Construction ──────────────────────────────────────────
 
     def _build_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(SPACING_LG, SPACING_LG, SPACING_LG, SPACING_LG)
-        layout.setSpacing(SPACING_MD)
+        layout = tk.Frame(self, bg=COLOR_APP_BG)
+        layout.pack(fill="both", expand=True, padx=SPACING_LG, pady=SPACING_LG)
 
         # ── Header ──
         self._header = PageHeader(
-            "Job Cards", subtitle="Track and manage service/repair jobs"
+            "Job Cards", subtitle="Track and manage service/repair jobs", parent=layout
         )
-        self._header.add_action(
-            "New Job Card", self._on_new_job_card, "btn_primary"
-        )
-        layout.addWidget(self._header)
+        self._header.add_action("New Job Card", self._on_new_job_card, "btn_primary")
 
         # ── Search bar ──
         self._search_bar = SearchBar(
-            placeholder="Search job cards…",
+            placeholder="Search job cards...",
             filters=["All", "Pending", "In Progress", "Completed", "Cancelled"],
+            parent=layout,
         )
         self._search_bar.set_search_callback(self._on_search)
         self._search_bar.set_filter_callback(self._on_filter)
-        layout.addWidget(self._search_bar)
 
         # ── Data table ──
         self._table = DataTable(
@@ -144,23 +95,16 @@ class JobCardsScreen(QWidget):
                 ("Labor", 90),
                 ("Total", 100),
                 ("Created", 100),
-            ]
+            ],
+            parent=layout,
         )
         self._table.set_double_click_handler(self._on_double_click)
-        layout.addWidget(self._table, stretch=1)
 
         # ── Action bar ──
-        self._action_bar = ActionBar()
-        self._action_bar.add_button(
-            "Edit", self._on_edit, "btn_secondary"
-        )
-        self._action_bar.add_button(
-            "Update Status", self._on_update_status, "btn_secondary"
-        )
-        self._action_bar.add_button(
-            "Delete", self._on_delete, "btn_danger"
-        )
-        layout.addWidget(self._action_bar)
+        self._action_bar = ActionBar(parent=layout)
+        self._action_bar.add_button("Edit", self._on_edit, "btn_secondary")
+        self._action_bar.add_button("Update Status", self._on_update_status, "btn_secondary")
+        self._action_bar.add_button("Delete", self._on_delete, "btn_danger")
 
     # ── Data Loading ─────────────────────────────────────────────
 
@@ -214,14 +158,6 @@ class JobCardsScreen(QWidget):
             ])
 
         self._table.load_data(rows)
-
-        # Insert StatusBadge widgets into the Status column (col 4)
-        for row_idx, jc in enumerate(job_cards):
-            status_text = jc.status or ""
-            badge = StatusBadge(status_text)
-            self._table.setCellWidget(row_idx, 4, badge)
-
-        # Store full job card objects for selection lookup
         self._job_cards_data = job_cards
 
     # ── Selection Helpers ────────────────────────────────────────
@@ -245,7 +181,7 @@ class JobCardsScreen(QWidget):
 
     # ── Double-click ─────────────────────────────────────────────
 
-    def _on_double_click(self, row, col):
+    def _on_double_click(self, row_index):
         jc = self._get_selected_job_card()
         if jc:
             self._open_edit_dialog(jc)
@@ -262,13 +198,14 @@ class JobCardsScreen(QWidget):
             staff_ctrl=self._staff_ctrl,
             parent=self,
         )
-        if dlg.exec() == QDialog.DialogCode.Accepted:
+        self.wait_window(dlg)
+        if dlg.result is not None:
             self.refresh()
 
     def _on_edit(self):
         jc = self._get_selected_job_card()
         if not jc:
-            QMessageBox.information(self, "No Selection", "Please select a job card to edit.")
+            messagebox.showinfo("No Selection", "Please select a job card to edit.")
             return
         self._open_edit_dialog(jc)
 
@@ -283,49 +220,48 @@ class JobCardsScreen(QWidget):
             job_card=jc,
             parent=self,
         )
-        if dlg.exec() == QDialog.DialogCode.Accepted:
+        self.wait_window(dlg)
+        if dlg.result is not None:
             self.refresh()
 
     def _on_update_status(self):
         jc = self._get_selected_job_card()
         if not jc:
-            QMessageBox.information(self, "No Selection", "Please select a job card to update status.")
+            messagebox.showinfo("No Selection", "Please select a job card to update status.")
             return
         dlg = UpdateStatusDialog(job_card=jc, jc_ctrl=self._jc_ctrl, parent=self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
+        self.wait_window(dlg)
+        if dlg.result is not None:
             self.refresh()
 
     def _on_delete(self):
         jc = self._get_selected_job_card()
         if not jc:
-            QMessageBox.information(self, "No Selection", "Please select a job card to delete.")
+            messagebox.showinfo("No Selection", "Please select a job card to delete.")
             return
 
-        reply = QMessageBox.question(
-            self,
+        reply = messagebox.askyesno(
             "Confirm Delete",
-            f"Are you sure you want to delete job card <b>{jc.job_number}</b>?\n"
+            f"Are you sure you want to delete job card {jc.job_number}?\n"
             "This action cannot be undone.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+            default="no",
         )
-        if reply == QMessageBox.StandardButton.Yes:
+        if reply:
             try:
-                # Delete items first, then the job card
                 for item in jc.items:
                     self._jc_ctrl.remove_job_card_item(item.id)
                 self._jc_ctrl.update_job_card(jc.id, status="CANCELLED")
                 self.refresh()
             except Exception:
                 logger.exception("Error deleting job card")
-                QMessageBox.critical(self, "Error", "Failed to delete job card.")
+                messagebox.showerror("Error", "Failed to delete job card.")
 
 
 # ═══════════════════════════════════════════════════════════════════
 #  Job Card Dialog (New / Edit)
 # ═══════════════════════════════════════════════════════════════════
 
-class JobCardDialog(QDialog):
+class JobCardDialog(tk.Toplevel):
     """Dialog for creating or editing a job card."""
 
     def __init__(
@@ -338,15 +274,18 @@ class JobCardDialog(QDialog):
         staff_ctrl: StaffController,
         job_card=None,
         parent=None,
+        **kwargs,
     ):
-        super().__init__(parent)
+        super().__init__(parent, **kwargs)
+
+        self.result = None
         self._session = session
         self._jc_ctrl = jc_ctrl
         self._veh_ctrl = veh_ctrl
         self._cust_ctrl = cust_ctrl
         self._inv_ctrl = inv_ctrl
         self._staff_ctrl = staff_ctrl
-        self._job_card = job_card  # None = new, otherwise edit
+        self._job_card = job_card
         self._is_edit = job_card is not None
 
         # Item data for the items table (list of dicts)
@@ -358,224 +297,214 @@ class JobCardDialog(QDialog):
         self._mechanics_cache: List = []
         self._inventory_cache: List = []
 
+        # Customer combo data
+        self._customer_ids: List = []
+        self._vehicle_ids: List = []
+        self._mechanic_ids: List = []
+        self._inventory_ids: List = []
+
+        if self._is_edit:
+            self.title(f"Edit Job Card — {self._job_card.job_number}")
+        else:
+            self.title("New Job Card")
+
+        self.configure(bg=COLOR_APP_BG)
+        self.grab_set()
+        self.transient(parent)
+        self.minsize(800, 680)
+
         self._build_ui()
         self._load_initial_data()
 
         if self._is_edit:
             self._populate_for_edit()
-            self.setWindowTitle(f"Edit Job Card — {self._job_card.job_number}")
-        else:
-            self.setWindowTitle("New Job Card")
 
-        self.setMinimumWidth(780)
-        self.setMinimumHeight(640)
+        # Center dialog
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 2
+        self.geometry(f"+{x}+{y}")
 
     # ── UI Construction ──────────────────────────────────────────
 
     def _build_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(SPACING_LG, SPACING_LG, SPACING_LG, SPACING_LG)
-        main_layout.setSpacing(SPACING_MD)
+        # Scrollable content
+        canvas = tk.Canvas(self, bg=COLOR_APP_BG, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
+        self._scroll_frame = tk.Frame(canvas, bg=COLOR_APP_BG)
 
-        # ── Top section: Customer + Vehicle selection ──
-        top_group = QGroupBox("Customer & Vehicle")
-        top_group.setStyleSheet(
-            f"QGroupBox {{ font-weight: bold; font-size: {FONT_SECTION_TITLE}px; "
-            f"border: 1px solid {COLOR_BORDER}; border-radius: 6px; "
-            f"margin-top: 12px; padding-top: 18px; }}"
-            f"QGroupBox::title {{ subcontrol-origin: margin; subcontrol-position: top left; "
-            f"padding: 0 8px; color: {COLOR_TEXT_PRIMARY}; }}"
+        self._scroll_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
-        top_form = QFormLayout(top_group)
-        top_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        top_form.setHorizontalSpacing(SPACING_MD)
-        top_form.setVerticalSpacing(SPACING_XS)
+        canvas.create_window((0, 0), window=self._scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
 
-        # Customer row with combo + New Customer button
-        cust_row = QHBoxLayout()
-        cust_row.setSpacing(SPACING_SM)
-        self._customer_combo = QComboBox()
-        self._customer_combo.setMinimumWidth(300)
-        self._customer_combo.currentIndexChanged.connect(self._on_customer_changed)
-        cust_row.addWidget(self._customer_combo, stretch=1)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
-        self._btn_new_customer = QPushButton("New Customer")
-        self._btn_new_customer.setObjectName("btn_secondary")
-        self._btn_new_customer.setFixedHeight(BUTTON_HEIGHT)
-        self._btn_new_customer.clicked.connect(self._on_new_customer_inline)
-        cust_row.addWidget(self._btn_new_customer)
-        top_form.addRow("Customer:", cust_row)
+        main = self._scroll_frame
+        pad = dict(padx=SPACING_LG, pady=SPACING_MD)
 
-        # Vehicle combo (filtered by selected customer)
-        self._vehicle_combo = QComboBox()
-        self._vehicle_combo.setMinimumWidth(300)
-        top_form.addRow("Vehicle:", self._vehicle_combo)
-
-        main_layout.addWidget(top_group)
-
-        # ── Middle section: Form fields ──
-        form_group = QGroupBox("Details")
-        form_group.setStyleSheet(
-            f"QGroupBox {{ font-weight: bold; font-size: {FONT_SECTION_TITLE}px; "
-            f"border: 1px solid {COLOR_BORDER}; border-radius: 6px; "
-            f"margin-top: 12px; padding-top: 18px; }}"
-            f"QGroupBox::title {{ subcontrol-origin: margin; subcontrol-position: top left; "
-            f"padding: 0 8px; color: {COLOR_TEXT_PRIMARY}; }}"
+        # ── Top section: Customer + Vehicle ──
+        top_frame = tk.LabelFrame(
+            main, text=" Customer & Vehicle ", font=(FONT_FAMILY, FONT_SECTION_TITLE, "bold"),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG, padx=SPACING_MD, pady=SPACING_MD,
         )
-        form_layout = QFormLayout(form_group)
-        form_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        form_layout.setHorizontalSpacing(SPACING_MD)
-        form_layout.setVerticalSpacing(SPACING_XS)
+        top_frame.pack(fill="x", **pad)
 
-        self._complaint_edit = QTextEdit()
-        self._complaint_edit.setFixedHeight(70)
-        self._complaint_edit.setPlaceholderText("Describe the customer's complaint…")
-        form_layout.addRow("Complaint:", self._complaint_edit)
+        # Customer row
+        cust_row = tk.Frame(top_frame, bg=COLOR_PANEL_BG)
+        cust_row.pack(fill="x", pady=SPACING_XS)
+        tk.Label(cust_row, text="Customer:", font=(FONT_FAMILY, FONT_SMALL),
+                 fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG, width=14, anchor="e").pack(side="left")
+        self._customer_combo = ttk.Combobox(cust_row, state="readonly", width=35)
+        self._customer_combo.pack(side="left", padx=(SPACING_SM, 0))
+        self._customer_combo.bind("<<ComboboxSelected>>", self._on_customer_changed)
+        self._btn_new_customer = ttk.Button(
+            cust_row, text="New Customer", command=self._on_new_customer_inline,
+            style="Secondary.TButton",
+        )
+        self._btn_new_customer.pack(side="left", padx=(SPACING_SM, 0))
 
-        self._mechanic_combo = QComboBox()
-        self._mechanic_combo.setMinimumWidth(250)
-        form_layout.addRow("Assigned Mechanic:", self._mechanic_combo)
+        # Vehicle row
+        veh_row = tk.Frame(top_frame, bg=COLOR_PANEL_BG)
+        veh_row.pack(fill="x", pady=SPACING_XS)
+        tk.Label(veh_row, text="Vehicle:", font=(FONT_FAMILY, FONT_SMALL),
+                 fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG, width=14, anchor="e").pack(side="left")
+        self._vehicle_combo = ttk.Combobox(veh_row, state="readonly", width=35)
+        self._vehicle_combo.pack(side="left", padx=(SPACING_SM, 0))
 
-        self._mileage_in_spin = QSpinBox()
-        self._mileage_in_spin.setRange(0, 9999999)
-        self._mileage_in_spin.setSuffix(" km")
-        self._mileage_in_spin.setFixedHeight(INPUT_HEIGHT)
-        form_layout.addRow("Mileage In:", self._mileage_in_spin)
+        # ── Middle section: Details ──
+        details_frame = tk.LabelFrame(
+            main, text=" Details ", font=(FONT_FAMILY, FONT_SECTION_TITLE, "bold"),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG, padx=SPACING_MD, pady=SPACING_MD,
+        )
+        details_frame.pack(fill="x", **pad)
 
-        main_layout.addWidget(form_group)
+        # Complaint
+        comp_row = tk.Frame(details_frame, bg=COLOR_PANEL_BG)
+        comp_row.pack(fill="x", pady=SPACING_XS)
+        tk.Label(comp_row, text="Complaint:", font=(FONT_FAMILY, FONT_SMALL),
+                 fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG, width=14, anchor="e").pack(side="left")
+        self._complaint_edit = tk.Text(comp_row, font=(FONT_FAMILY, FONT_BODY), height=3, wrap="word")
+        self._complaint_edit.pack(side="left", fill="x", expand=True, padx=(SPACING_SM, 0))
+
+        # Mechanic
+        mech_row = tk.Frame(details_frame, bg=COLOR_PANEL_BG)
+        mech_row.pack(fill="x", pady=SPACING_XS)
+        tk.Label(mech_row, text="Assigned Mechanic:", font=(FONT_FAMILY, FONT_SMALL),
+                 fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG, width=14, anchor="e").pack(side="left")
+        self._mechanic_combo = ttk.Combobox(mech_row, state="readonly", width=30)
+        self._mechanic_combo.pack(side="left", padx=(SPACING_SM, 0))
+
+        # Mileage
+        mil_row = tk.Frame(details_frame, bg=COLOR_PANEL_BG)
+        mil_row.pack(fill="x", pady=SPACING_XS)
+        tk.Label(mil_row, text="Mileage In:", font=(FONT_FAMILY, FONT_SMALL),
+                 fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG, width=14, anchor="e").pack(side="left")
+        self._mileage_var = tk.IntVar(value=0)
+        self._mileage_in_spin = ttk.Spinbox(
+            mil_row, from_=0, to=9999999, textvariable=self._mileage_var, width=14,
+        )
+        self._mileage_in_spin.pack(side="left", padx=(SPACING_SM, 0))
+        tk.Label(mil_row, text="km", font=(FONT_FAMILY, FONT_SMALL),
+                 fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG).pack(side="left", padx=(SPACING_XS, 0))
 
         # ── Items section ──
-        items_group = QGroupBox("Items (Parts / Services / Labor)")
-        items_group.setStyleSheet(
-            f"QGroupBox {{ font-weight: bold; font-size: {FONT_SECTION_TITLE}px; "
-            f"border: 1px solid {COLOR_BORDER}; border-radius: 6px; "
-            f"margin-top: 12px; padding-top: 18px; }}"
-            f"QGroupBox::title {{ subcontrol-origin: margin; subcontrol-position: top left; "
-            f"padding: 0 8px; color: {COLOR_TEXT_PRIMARY}; }}"
+        items_frame = tk.LabelFrame(
+            main, text=" Items (Parts / Services / Labor) ",
+            font=(FONT_FAMILY, FONT_SECTION_TITLE, "bold"),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG, padx=SPACING_MD, pady=SPACING_MD,
         )
-        items_layout = QVBoxLayout(items_group)
-        items_layout.setSpacing(SPACING_SM)
+        items_frame.pack(fill="both", expand=True, **pad)
 
         # Items toolbar
-        items_toolbar = QHBoxLayout()
-        items_toolbar.setSpacing(SPACING_SM)
+        toolbar = tk.Frame(items_frame, bg=COLOR_PANEL_BG)
+        toolbar.pack(fill="x", pady=(0, SPACING_SM))
 
-        # Inventory picker
-        items_toolbar.addWidget(QLabel("From Inventory:"))
-        self._inventory_combo = QComboBox()
-        self._inventory_combo.setMinimumWidth(250)
-        self._inventory_combo.currentIndexChanged.connect(self._on_inventory_selected)
-        items_toolbar.addWidget(self._inventory_combo, stretch=1)
+        tk.Label(toolbar, text="From Inventory:", font=(FONT_FAMILY, FONT_SMALL),
+                 fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG).pack(side="left")
+        self._inventory_combo = ttk.Combobox(toolbar, state="readonly", width=30)
+        self._inventory_combo.pack(side="left", padx=(SPACING_SM, 0))
 
-        self._btn_add_inventory = QPushButton("Add from Inventory")
-        self._btn_add_inventory.setObjectName("btn_secondary")
-        self._btn_add_inventory.setFixedHeight(BUTTON_HEIGHT)
-        self._btn_add_inventory.clicked.connect(self._on_add_inventory_item)
-        items_toolbar.addWidget(self._btn_add_inventory)
-
-        self._btn_add_custom = QPushButton("Add Custom Item")
-        self._btn_add_custom.setObjectName("btn_secondary")
-        self._btn_add_custom.setFixedHeight(BUTTON_HEIGHT)
-        self._btn_add_custom.clicked.connect(self._on_add_custom_item)
-        items_toolbar.addWidget(self._btn_add_custom)
-
-        items_toolbar.addStretch()
-        items_layout.addLayout(items_toolbar)
+        ttk.Button(toolbar, text="Add from Inventory", command=self._on_add_inventory_item,
+                    style="Secondary.TButton").pack(side="left", padx=(SPACING_SM, 0))
+        ttk.Button(toolbar, text="Add Custom Item", command=self._on_add_custom_item,
+                    style="Secondary.TButton").pack(side="left", padx=(SPACING_SM, 0))
 
         # Items table
-        self._items_table = QTableWidget(0, 6)
-        self._items_table.setHorizontalHeaderLabels(
-            ["Description", "Type", "Qty", "Unit Price", "Line Total", ""]
+        self._items_table = DataTable(
+            columns=[
+                ("Description", 200),
+                ("Type", 80),
+                ("Qty", 60),
+                ("Unit Price", 110),
+                ("Line Total", 110),
+            ],
+            parent=items_frame,
         )
-        self._items_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._items_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._items_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._items_table.setAlternatingRowColors(True)
-        self._items_table.verticalHeader().setVisible(False)
-        self._items_table.setMinimumHeight(120)
 
-        header = self._items_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
-        self._items_table.setColumnWidth(1, 80)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
-        self._items_table.setColumnWidth(2, 60)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
-        self._items_table.setColumnWidth(3, 110)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
-        self._items_table.setColumnWidth(4, 110)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
-        self._items_table.setColumnWidth(5, 60)
+        # Remove item button
+        rm_frame = tk.Frame(items_frame, bg=COLOR_PANEL_BG)
+        rm_frame.pack(fill="x", pady=(SPACING_XS, 0))
+        ttk.Button(rm_frame, text="Remove Selected Item", command=self._on_remove_item,
+                    style="Danger.TButton").pack(side="right")
 
-        items_layout.addWidget(self._items_table)
-
-        main_layout.addWidget(items_group, stretch=1)
-
-        # ── Bottom section: Labor charge + Summary ──
-        bottom_row = QHBoxLayout()
-        bottom_row.setSpacing(SPACING_LG)
+        # ── Bottom section: Labor + Summary ──
+        bottom_frame = tk.Frame(main, bg=COLOR_APP_BG)
+        bottom_frame.pack(fill="x", **pad)
 
         # Labor charge
-        labor_form = QFormLayout()
-        labor_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        labor_form.setHorizontalSpacing(SPACING_SM)
-
-        self._labor_input = QDoubleSpinBox()
-        self._labor_input.setRange(0, 9999999.99)
-        self._labor_input.setDecimals(2)
-        self._labor_input.setPrefix("Rs. ")
-        self._labor_input.setFixedHeight(INPUT_HEIGHT)
-        self._labor_input.valueChanged.connect(self._recalculate_totals)
-        labor_form.addRow("Labor Charge:", self._labor_input)
-
-        bottom_row.addLayout(labor_form)
+        labor_frame = tk.Frame(bottom_frame, bg=COLOR_APP_BG)
+        labor_frame.pack(side="left", padx=(0, SPACING_LG))
+        tk.Label(labor_frame, text="Labor Charge:", font=(FONT_FAMILY, FONT_SMALL),
+                 fg=COLOR_TEXT_SECONDARY, bg=COLOR_APP_BG).pack(side="left")
+        self._labor_var = tk.StringVar(value="0.00")
+        self._labor_input = tk.Entry(
+            labor_frame, textvariable=self._labor_var, font=(FONT_FAMILY, FONT_BODY), width=12,
+        )
+        self._labor_input.pack(side="left", padx=(SPACING_SM, 0))
+        self._labor_input.bind("<KeyRelease>", lambda e: self._recalculate_totals())
 
         # Spacer
-        bottom_row.addStretch()
+        tk.Frame(bottom_frame, bg=COLOR_APP_BG).pack(side="left", fill="x", expand=True)
 
         # Summary panel
-        summary_frame = QFrame()
-        summary_frame.setObjectName("panel")
-        summary_frame.setStyleSheet(
-            f"QFrame#panel {{ background-color: {COLOR_PANEL_BG}; "
-            f"border: 1px solid {COLOR_BORDER}; border-radius: 6px; "
-            f"padding: {SPACING_SM}px; }}"
+        summary_frame = tk.Frame(
+            bottom_frame, bg=COLOR_PANEL_BG, padx=SPACING_MD, pady=SPACING_SM,
+            highlightbackground=COLOR_BORDER, highlightthickness=1,
         )
-        summary_layout = QVBoxLayout(summary_frame)
-        summary_layout.setContentsMargins(SPACING_MD, SPACING_SM, SPACING_MD, SPACING_SM)
-        summary_layout.setSpacing(SPACING_XS)
+        summary_frame.pack(side="right")
 
-        self._subtotal_label = QLabel("Subtotal: Rs. 0.00")
-        self._subtotal_label.setStyleSheet(
-            f"font-size: {FONT_BODY}px; color: {COLOR_TEXT_SECONDARY};"
+        self._subtotal_label = tk.Label(
+            summary_frame, text="Subtotal: Rs. 0.00", font=(FONT_FAMILY, FONT_BODY),
+            fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG, anchor="e",
         )
-        summary_layout.addWidget(self._subtotal_label)
+        self._subtotal_label.pack(anchor="e")
 
-        self._labor_label = QLabel("Labor: Rs. 0.00")
-        self._labor_label.setStyleSheet(
-            f"font-size: {FONT_BODY}px; color: {COLOR_TEXT_SECONDARY};"
+        self._labor_label = tk.Label(
+            summary_frame, text="Labor: Rs. 0.00", font=(FONT_FAMILY, FONT_BODY),
+            fg=COLOR_TEXT_SECONDARY, bg=COLOR_PANEL_BG, anchor="e",
         )
-        summary_layout.addWidget(self._labor_label)
+        self._labor_label.pack(anchor="e")
 
-        self._total_label = QLabel("Total: Rs. 0.00")
-        self._total_label.setStyleSheet(
-            f"font-size: {FONT_PAGE_TITLE}px; font-weight: bold; "
-            f"color: {COLOR_TEXT_PRIMARY};"
+        self._total_label = tk.Label(
+            summary_frame, text="Total: Rs. 0.00",
+            font=(FONT_FAMILY, FONT_PAGE_TITLE, "bold"),
+            fg=COLOR_TEXT_PRIMARY, bg=COLOR_PANEL_BG, anchor="e",
         )
-        summary_layout.addWidget(self._total_label)
-
-        bottom_row.addWidget(summary_frame)
-        main_layout.addLayout(bottom_row)
+        self._total_label.pack(anchor="e")
 
         # ── Dialog buttons ──
-        btn_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save
-            | QDialogButtonBox.StandardButton.Cancel
-        )
-        btn_box.button(QDialogButtonBox.StandardButton.Save).setText("Save Job Card")
-        btn_box.accepted.connect(self._on_save)
-        btn_box.rejected.connect(self.reject)
-        main_layout.addWidget(btn_box)
+        btn_frame = tk.Frame(main, bg=COLOR_APP_BG)
+        btn_frame.pack(fill="x", padx=SPACING_LG, pady=SPACING_MD)
+
+        tk.Frame(btn_frame, bg=COLOR_APP_BG).pack(side="left", fill="x", expand=True)
+        ttk.Button(btn_frame, text="Cancel", command=self._on_cancel,
+                    style="Secondary.TButton").pack(side="right", padx=(SPACING_SM, 0))
+        ttk.Button(btn_frame, text="Save Job Card", command=self._on_save,
+                    style="Primary.TButton").pack(side="right")
 
     # ── Data Loading ─────────────────────────────────────────────
 
@@ -585,90 +514,94 @@ class JobCardDialog(QDialog):
         try:
             self._customers_cache = self._cust_ctrl.get_customers()
         except Exception:
-            logger.exception("Error loading customers")
             self._customers_cache = []
 
-        self._customer_combo.blockSignals(True)
-        self._customer_combo.clear()
-        self._customer_combo.addItem("— Select Customer —", None)
+        customer_display = ["— Select Customer —"]
+        self._customer_ids = [None]
         for c in self._customers_cache:
-            self._customer_combo.addItem(f"{c.name} ({c.phone})", c.id)
-        self._customer_combo.blockSignals(False)
+            customer_display.append(f"{c.name} ({c.phone})")
+            self._customer_ids.append(c.id)
+        self._customer_combo["values"] = customer_display
+        if customer_display:
+            self._customer_combo.current(0)
 
-        # Mechanics (staff with MECHANIC role, or all staff)
+        # Mechanics
         try:
             all_staff = self._staff_ctrl.get_all_staff()
-            self._mechanics_cache = [
-                s for s in all_staff if s.is_active
-            ]
+            self._mechanics_cache = [s for s in all_staff if s.is_active]
         except Exception:
-            logger.exception("Error loading staff")
             self._mechanics_cache = []
 
-        self._mechanic_combo.clear()
-        self._mechanic_combo.addItem("— Unassigned —", None)
+        mech_display = ["— Unassigned —"]
+        self._mechanic_ids = [None]
         for m in self._mechanics_cache:
-            self._mechanic_combo.addItem(m.full_name, m.id)
+            mech_display.append(m.full_name)
+            self._mechanic_ids.append(m.id)
+        self._mechanic_combo["values"] = mech_display
+        if mech_display:
+            self._mechanic_combo.current(0)
 
         # Inventory items
         try:
             self._inventory_cache = self._inv_ctrl.get_items()
         except Exception:
-            logger.exception("Error loading inventory")
             self._inventory_cache = []
 
-        self._inventory_combo.clear()
-        self._inventory_combo.addItem("— Select Item —", None)
+        inv_display = ["— Select Item —"]
+        self._inventory_ids = [None]
         for inv in self._inventory_cache:
             price = cents_to_display(inv.sell_price_cents)
-            self._inventory_combo.addItem(
-                f"{inv.name} ({inv.item_code}) — {price}",
-                inv.id,
-            )
+            inv_display.append(f"{inv.name} ({inv.item_code}) — {price}")
+            self._inventory_ids.append(inv.id)
+        self._inventory_combo["values"] = inv_display
+        if inv_display:
+            self._inventory_combo.current(0)
 
         # Vehicles: initially empty until customer is selected
-        self._vehicle_combo.clear()
-        self._vehicle_combo.addItem("— Select Vehicle —", None)
+        self._vehicle_combo["values"] = ["— Select Vehicle —"]
+        self._vehicle_ids = [None]
+        self._vehicle_combo.current(0)
 
     # ── Customer changed → refresh vehicles ──────────────────────
 
-    def _on_customer_changed(self, index: int):
-        cust_id = self._customer_combo.currentData()
+    def _on_customer_changed(self, event=None):
+        idx = self._customer_combo.current()
+        cust_id = self._customer_ids[idx] if idx < len(self._customer_ids) else None
         self._load_vehicles_for_customer(cust_id)
 
     def _load_vehicles_for_customer(self, customer_id):
-        self._vehicle_combo.clear()
-        self._vehicle_combo.addItem("— Select Vehicle —", None)
+        self._vehicle_combo["values"] = ["— Select Vehicle —"]
+        self._vehicle_ids = [None]
         self._vehicles_cache = []
 
         if not customer_id:
+            self._vehicle_combo.current(0)
             return
 
         try:
             self._vehicles_cache = self._veh_ctrl.get_vehicles_by_customer(customer_id)
         except Exception:
-            logger.exception("Error loading vehicles for customer %s", customer_id)
             self._vehicles_cache = []
 
+        veh_display = ["— Select Vehicle —"]
+        self._vehicle_ids = [None]
         for v in self._vehicles_cache:
             label = v.registration_no
             if v.make or v.model:
                 label += f" — {v.make or ''} {v.model or ''}".strip()
-            self._vehicle_combo.addItem(label, v.id)
-
-    # ── Inventory selection auto-fill ────────────────────────────
-
-    def _on_inventory_selected(self, index: int):
-        """Just a hook — the actual logic is in _on_add_inventory_item."""
-        pass
+            veh_display.append(label)
+            self._vehicle_ids.append(v.id)
+        self._vehicle_combo["values"] = veh_display
+        if veh_display:
+            self._vehicle_combo.current(0)
 
     # ── Add items ────────────────────────────────────────────────
 
     def _on_add_inventory_item(self):
-        """Add a selected inventory item to the items table."""
-        inv_id = self._inventory_combo.currentData()
+        idx = self._inventory_combo.current()
+        inv_id = self._inventory_ids[idx] if idx < len(self._inventory_ids) else None
         if not inv_id:
-            QMessageBox.information(self, "No Item", "Please select an inventory item first.")
+            messagebox.showinfo("No Item", "Please select an inventory item first.", parent=self)
             return
 
         inv_item = None
@@ -683,9 +616,10 @@ class JobCardDialog(QDialog):
         # Check if already added
         for existing in self._items_data:
             if existing.get("inventory_item_id") == inv_id:
-                QMessageBox.information(
-                    self, "Already Added",
-                    f"'{inv_item.name}' is already in the items list."
+                messagebox.showinfo(
+                    "Already Added",
+                    f"'{inv_item.name}' is already in the items list.",
+                    parent=self,
                 )
                 return
 
@@ -702,24 +636,21 @@ class JobCardDialog(QDialog):
         self._recalculate_totals()
 
         # Reset inventory combo
-        self._inventory_combo.setCurrentIndex(0)
+        self._inventory_combo.current(0)
 
     def _on_add_custom_item(self):
-        """Open a sub-dialog to add a custom line item."""
         dlg = CustomItemDialog(parent=self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            item_dict = dlg.get_item_data()
-            self._items_data.append(item_dict)
+        self.wait_window(dlg)
+        if dlg.result is not None:
+            self._items_data.append(dlg.result)
             self._refresh_items_table()
             self._recalculate_totals()
 
     def _on_remove_item(self):
-        """Remove the selected item from the items table."""
-        row = self._items_table.currentRow()
+        row = self._items_table.get_selected_row()
         if row < 0:
-            QMessageBox.information(self, "No Selection", "Please select an item to remove.")
+            messagebox.showinfo("No Selection", "Please select an item to remove.", parent=self)
             return
-
         if 0 <= row < len(self._items_data):
             del self._items_data[row]
             self._refresh_items_table()
@@ -728,67 +659,38 @@ class JobCardDialog(QDialog):
     # ── Items table refresh ──────────────────────────────────────
 
     def _refresh_items_table(self):
-        self._items_table.setRowCount(0)
-        for i, item in enumerate(self._items_data):
-            row = self._items_table.rowCount()
-            self._items_table.insertRow(row)
-
-            desc_item = QTableWidgetItem(item.get("description", ""))
-            desc_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            self._items_table.setItem(row, 0, desc_item)
-
-            type_item = QTableWidgetItem(item.get("item_type", "PART"))
-            type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
-            self._items_table.setItem(row, 1, type_item)
-
-            qty_item = QTableWidgetItem(str(item.get("quantity", 1)))
-            qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
-            self._items_table.setItem(row, 2, qty_item)
-
-            unit_price = cents_to_display(item.get("unit_price_cents", 0))
-            price_item = QTableWidgetItem(unit_price)
-            price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._items_table.setItem(row, 3, price_item)
-
-            line_total = cents_to_display(item.get("line_total_cents", 0))
-            total_item = QTableWidgetItem(line_total)
-            total_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._items_table.setItem(row, 4, total_item)
-
-            # Remove button
-            remove_btn = QPushButton("✕")
-            remove_btn.setObjectName("btn_danger")
-            remove_btn.setFixedSize(30, 26)
-            remove_btn.setToolTip("Remove this item")
-            # Capture index via default argument
-            remove_btn.clicked.connect(lambda checked, idx=i: self._remove_item_at(idx))
-            self._items_table.setCellWidget(row, 5, remove_btn)
-
-    def _remove_item_at(self, index: int):
-        """Remove item at the given index from _items_data."""
-        if 0 <= index < len(self._items_data):
-            del self._items_data[index]
-            self._refresh_items_table()
-            self._recalculate_totals()
+        rows = []
+        for item in self._items_data:
+            rows.append([
+                item.get("description", ""),
+                item.get("item_type", "PART"),
+                str(item.get("quantity", 1)),
+                cents_to_display(item.get("unit_price_cents", 0)),
+                cents_to_display(item.get("line_total_cents", 0)),
+            ])
+        self._items_table.load_data(rows)
 
     # ── Totals ───────────────────────────────────────────────────
 
     def _recalculate_totals(self):
         subtotal = sum(item.get("line_total_cents", 0) for item in self._items_data)
-        labor_cents = int(round(self._labor_input.value() * 100))
+        try:
+            labor_cents = int(round(float(self._labor_var.get()) * 100))
+        except (ValueError, tk.TclError):
+            labor_cents = 0
         total = subtotal + labor_cents
 
-        self._subtotal_label.setText(f"Subtotal: {cents_to_display(subtotal)}")
-        self._labor_label.setText(f"Labor: {cents_to_display(labor_cents)}")
-        self._total_label.setText(f"Total: {cents_to_display(total)}")
+        self._subtotal_label.config(text=f"Subtotal: {cents_to_display(subtotal)}")
+        self._labor_label.config(text=f"Labor: {cents_to_display(labor_cents)}")
+        self._total_label.config(text=f"Total: {cents_to_display(total)}")
 
     # ── Inline New Customer ──────────────────────────────────────
 
     def _on_new_customer_inline(self):
-        """Open a compact dialog to quickly create a customer."""
         dlg = InlineCustomerDialog(cust_ctrl=self._cust_ctrl, parent=self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            new_cust = dlg.get_created_customer()
+        self.wait_window(dlg)
+        if dlg.result is not None:
+            new_cust = dlg.result
             if new_cust:
                 # Reload customer combo and select the new one
                 try:
@@ -796,18 +698,18 @@ class JobCardDialog(QDialog):
                 except Exception:
                     self._customers_cache = []
 
-                self._customer_combo.blockSignals(True)
-                self._customer_combo.clear()
-                self._customer_combo.addItem("— Select Customer —", None)
+                customer_display = ["— Select Customer —"]
+                self._customer_ids = [None]
                 for c in self._customers_cache:
-                    self._customer_combo.addItem(f"{c.name} ({c.phone})", c.id)
-                self._customer_combo.blockSignals(False)
+                    customer_display.append(f"{c.name} ({c.phone})")
+                    self._customer_ids.append(c.id)
+                self._customer_combo["values"] = customer_display
 
                 # Select the new customer
-                idx = self._customer_combo.findData(new_cust.id)
-                if idx >= 0:
-                    self._customer_combo.setCurrentIndex(idx)
-                    self._on_customer_changed(idx)
+                if new_cust.id in self._customer_ids:
+                    idx = self._customer_ids.index(new_cust.id)
+                    self._customer_combo.current(idx)
+                    self._on_customer_changed()
 
     # ── Populate for Edit ────────────────────────────────────────
 
@@ -818,34 +720,34 @@ class JobCardDialog(QDialog):
 
         # Select customer
         if jc.customer_id:
-            idx = self._customer_combo.findData(jc.customer_id)
-            if idx >= 0:
-                self._customer_combo.setCurrentIndex(idx)
+            if jc.customer_id in self._customer_ids:
+                idx = self._customer_ids.index(jc.customer_id)
+                self._customer_combo.current(idx)
                 self._load_vehicles_for_customer(jc.customer_id)
 
         # Select vehicle
         if jc.vehicle_id:
-            idx = self._vehicle_combo.findData(jc.vehicle_id)
-            if idx >= 0:
-                self._vehicle_combo.setCurrentIndex(idx)
+            if jc.vehicle_id in self._vehicle_ids:
+                idx = self._vehicle_ids.index(jc.vehicle_id)
+                self._vehicle_combo.current(idx)
 
         # Complaint
         if jc.complaint:
-            self._complaint_edit.setPlainText(jc.complaint)
+            self._complaint_edit.insert("1.0", jc.complaint)
 
         # Mechanic
         if jc.assigned_mechanic:
-            idx = self._mechanic_combo.findData(jc.assigned_mechanic)
-            if idx >= 0:
-                self._mechanic_combo.setCurrentIndex(idx)
+            if jc.assigned_mechanic in self._mechanic_ids:
+                idx = self._mechanic_ids.index(jc.assigned_mechanic)
+                self._mechanic_combo.current(idx)
 
         # Mileage in
         if jc.mileage_in is not None:
-            self._mileage_in_spin.setValue(jc.mileage_in)
+            self._mileage_var.set(jc.mileage_in)
 
         # Labor charge
         labor_value = (jc.labor_charge_cents or 0) / 100.0
-        self._labor_input.setValue(labor_value)
+        self._labor_var.set(f"{labor_value:.2f}")
 
         # Items
         self._items_data = []
@@ -866,24 +768,29 @@ class JobCardDialog(QDialog):
 
     def _on_save(self):
         # Validate
-        customer_id = self._customer_combo.currentData()
-        vehicle_id = self._vehicle_combo.currentData()
+        cust_idx = self._customer_combo.current()
+        customer_id = self._customer_ids[cust_idx] if cust_idx < len(self._customer_ids) else None
+        veh_idx = self._vehicle_combo.current()
+        vehicle_id = self._vehicle_ids[veh_idx] if veh_idx < len(self._vehicle_ids) else None
 
         if not customer_id:
-            QMessageBox.warning(self, "Validation", "Please select a customer.")
+            messagebox.showwarning("Validation", "Please select a customer.", parent=self)
             return
         if not vehicle_id:
-            QMessageBox.warning(self, "Validation", "Please select a vehicle.")
+            messagebox.showwarning("Validation", "Please select a vehicle.", parent=self)
             return
 
-        complaint = self._complaint_edit.toPlainText().strip()
-        mechanic_id = self._mechanic_combo.currentData()
-        mileage_in = self._mileage_in_spin.value() or None
-        labor_cents = int(round(self._labor_input.value() * 100))
+        complaint = self._complaint_edit.get("1.0", "end-1c").strip()
+        mech_idx = self._mechanic_combo.current()
+        mechanic_id = self._mechanic_ids[mech_idx] if mech_idx < len(self._mechanic_ids) else None
+        mileage_in = self._mileage_var.get() or None
+        try:
+            labor_cents = int(round(float(self._labor_var.get()) * 100))
+        except (ValueError, tk.TclError):
+            labor_cents = 0
 
         try:
             if self._is_edit:
-                # Update existing job card
                 self._jc_ctrl.update_job_card(
                     self._job_card.id,
                     vehicle_id=vehicle_id,
@@ -903,28 +810,16 @@ class JobCardDialog(QDialog):
                 # Add/update items
                 for item_data in self._items_data:
                     if item_data.get("id"):
-                        # Item already exists — remove and re-add for simplicity
                         self._jc_ctrl.remove_job_card_item(item_data["id"])
-                        self._jc_ctrl.add_job_card_item(
-                            job_card_id=self._job_card.id,
-                            description=item_data["description"],
-                            quantity=item_data["quantity"],
-                            unit_price_cents=item_data["unit_price_cents"],
-                            item_type=item_data["item_type"],
-                            inventory_item_id=item_data.get("inventory_item_id"),
-                        )
-                    else:
-                        # New item
-                        self._jc_ctrl.add_job_card_item(
-                            job_card_id=self._job_card.id,
-                            description=item_data["description"],
-                            quantity=item_data["quantity"],
-                            unit_price_cents=item_data["unit_price_cents"],
-                            item_type=item_data["item_type"],
-                            inventory_item_id=item_data.get("inventory_item_id"),
-                        )
+                    self._jc_ctrl.add_job_card_item(
+                        job_card_id=self._job_card.id,
+                        description=item_data["description"],
+                        quantity=item_data["quantity"],
+                        unit_price_cents=item_data["unit_price_cents"],
+                        item_type=item_data["item_type"],
+                        inventory_item_id=item_data.get("inventory_item_id"),
+                    )
             else:
-                # Create new job card
                 new_jc = self._jc_ctrl.create_job_card(
                     vehicle_id=vehicle_id,
                     customer_id=customer_id,
@@ -935,10 +830,9 @@ class JobCardDialog(QDialog):
                 )
 
                 if not new_jc:
-                    QMessageBox.critical(self, "Error", "Failed to create job card.")
+                    messagebox.showerror("Error", "Failed to create job card.", parent=self)
                     return
 
-                # Add items
                 for item_data in self._items_data:
                     self._jc_ctrl.add_job_card_item(
                         job_card_id=new_jc.id,
@@ -949,276 +843,228 @@ class JobCardDialog(QDialog):
                         inventory_item_id=item_data.get("inventory_item_id"),
                     )
 
-            self.accept()
+            self.result = True
+            self.destroy()
 
         except Exception:
             logger.exception("Error saving job card")
-            QMessageBox.critical(self, "Error", "Failed to save job card. Please check the data and try again.")
+            messagebox.showerror("Error", "Failed to save job card.", parent=self)
+
+    def _on_cancel(self):
+        self.result = None
+        self.destroy()
 
 
 # ═══════════════════════════════════════════════════════════════════
 #  Custom Item Dialog
 # ═══════════════════════════════════════════════════════════════════
 
-class CustomItemDialog(QDialog):
+class CustomItemDialog(tk.Toplevel):
     """Sub-dialog for adding a custom line item (part/service/labor)."""
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Add Custom Item")
-        self.setMinimumWidth(400)
+    def __init__(self, parent=None, **kwargs):
+        super().__init__(parent, **kwargs)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
-        layout.setSpacing(SPACING_SM)
+        self.result = None
+        self.title("Add Custom Item")
+        self.configure(bg=COLOR_APP_BG)
+        self.grab_set()
+        self.transient(parent)
+        self.minsize(420, 320)
 
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        form.setHorizontalSpacing(SPACING_MD)
-        form.setVerticalSpacing(SPACING_XS)
+        outer = tk.Frame(self, bg=COLOR_APP_BG, padx=SPACING_LG, pady=SPACING_LG)
+        outer.pack(fill="both", expand=True)
 
-        self._desc_edit = QLineEdit()
-        self._desc_edit.setPlaceholderText("Item description")
-        self._desc_edit.setFixedHeight(INPUT_HEIGHT)
-        form.addRow("Description:", self._desc_edit)
+        form = FormPanel("Custom Item", parent=outer)
 
-        self._type_combo = QComboBox()
-        self._type_combo.addItems(["PART", "SERVICE", "LABOR"])
-        self._type_combo.setFixedHeight(INPUT_HEIGHT)
-        form.addRow("Type:", self._type_combo)
+        self._desc_input = tk.Entry(form, font=(FONT_FAMILY, FONT_BODY))
+        form.add_row("Description:", self._desc_input)
 
-        self._qty_spin = QSpinBox()
-        self._qty_spin.setRange(1, 99999)
-        self._qty_spin.setValue(1)
-        self._qty_spin.setFixedHeight(INPUT_HEIGHT)
-        form.addRow("Quantity:", self._qty_spin)
+        self._type_combo = ttk.Combobox(
+            form, values=["PART", "SERVICE", "LABOR"], state="readonly", width=15,
+        )
+        self._type_combo.set("PART")
+        form.add_row("Type:", self._type_combo)
 
-        self._price_spin = QDoubleSpinBox()
-        self._price_spin.setRange(0, 9999999.99)
-        self._price_spin.setDecimals(2)
-        self._price_spin.setPrefix("Rs. ")
-        self._price_spin.setFixedHeight(INPUT_HEIGHT)
-        form.addRow("Unit Price:", self._price_spin)
+        self._qty_var = tk.IntVar(value=1)
+        self._qty_spin = ttk.Spinbox(form, from_=1, to=99999, textvariable=self._qty_var, width=10)
+        form.add_row("Quantity:", self._qty_spin)
 
-        layout.addLayout(form)
+        self._price_var = tk.StringVar(value="0.00")
+        self._price_input = tk.Entry(form, textvariable=self._price_var, font=(FONT_FAMILY, FONT_BODY))
+        form.add_row("Unit Price (Rs.):", self._price_input)
 
         # Buttons
-        btn_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        btn_box.accepted.connect(self._validate_and_accept)
-        btn_box.rejected.connect(self.reject)
-        layout.addWidget(btn_box)
+        btn_frame = tk.Frame(outer, bg=COLOR_APP_BG)
+        btn_frame.pack(fill="x", pady=(SPACING_MD, 0))
+        tk.Frame(btn_frame, bg=COLOR_APP_BG).pack(side="left", fill="x", expand=True)
+        ttk.Button(btn_frame, text="Cancel", command=self._on_cancel,
+                    style="Secondary.TButton").pack(side="right", padx=(SPACING_SM, 0))
+        ttk.Button(btn_frame, text="Add", command=self._validate_and_accept,
+                    style="Primary.TButton").pack(side="right")
+
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 2
+        self.geometry(f"+{x}+{y}")
 
     def _validate_and_accept(self):
-        if not self._desc_edit.text().strip():
-            QMessageBox.warning(self, "Validation", "Please enter a description.")
+        if not self._desc_input.get().strip():
+            messagebox.showwarning("Validation", "Please enter a description.", parent=self)
             return
-        self.accept()
 
-    def get_item_data(self) -> dict:
-        qty = self._qty_spin.value()
-        unit_price_cents = int(round(self._price_spin.value() * 100))
+        qty = self._qty_var.get()
+        try:
+            unit_price_cents = int(round(float(self._price_var.get()) * 100))
+        except (ValueError, tk.TclError):
+            unit_price_cents = 0
+
         line_total_cents = qty * unit_price_cents
-        return {
-            "description": self._desc_edit.text().strip(),
-            "item_type": self._type_combo.currentText(),
+        self.result = {
+            "description": self._desc_input.get().strip(),
+            "item_type": self._type_combo.get(),
             "quantity": qty,
             "unit_price_cents": unit_price_cents,
             "line_total_cents": line_total_cents,
-            "inventory_item_id": None,
         }
+        self.destroy()
+
+    def _on_cancel(self):
+        self.result = None
+        self.destroy()
 
 
 # ═══════════════════════════════════════════════════════════════════
 #  Update Status Dialog
 # ═══════════════════════════════════════════════════════════════════
 
-class UpdateStatusDialog(QDialog):
-    """Dialog for updating the status of a job card."""
+class UpdateStatusDialog(tk.Toplevel):
+    """Dialog for updating a job card's status."""
 
-    def __init__(self, job_card, jc_ctrl: JobCardController, parent=None):
-        super().__init__(parent)
+    def __init__(self, job_card, jc_ctrl, parent=None, **kwargs):
+        super().__init__(parent, **kwargs)
+
+        self.result = None
         self._job_card = job_card
         self._jc_ctrl = jc_ctrl
 
-        self.setWindowTitle(f"Update Status — {job_card.job_number}")
-        self.setMinimumWidth(360)
+        self.title(f"Update Status — {job_card.job_number}")
+        self.configure(bg=COLOR_APP_BG)
+        self.grab_set()
+        self.transient(parent)
+        self.minsize(400, 220)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
-        layout.setSpacing(SPACING_MD)
+        outer = tk.Frame(self, bg=COLOR_APP_BG, padx=SPACING_LG, pady=SPACING_LG)
+        outer.pack(fill="both", expand=True)
 
-        # Current status display
-        current_row = QHBoxLayout()
-        current_row.addWidget(QLabel("Current Status:"))
-        current_badge = StatusBadge(job_card.status)
-        current_row.addWidget(current_badge)
-        current_row.addStretch()
-        layout.addLayout(current_row)
+        form = FormPanel("Update Job Card Status", parent=outer)
+
+        # Current status
+        current_badge = StatusBadge(job_card.status or "PENDING", parent=form)
+        form.add_row("Current Status:", current_badge)
 
         # New status
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        form.setHorizontalSpacing(SPACING_MD)
-        form.setVerticalSpacing(SPACING_XS)
-
-        self._status_combo = QComboBox()
-        self._status_combo.addItems(["PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"])
-        self._status_combo.setFixedHeight(INPUT_HEIGHT)
-
-        # Set current status as default
-        current_idx = self._status_combo.findText(job_card.status)
-        if current_idx >= 0:
-            self._status_combo.setCurrentIndex(current_idx)
-
-        form.addRow("New Status:", self._status_combo)
-
-        self._mileage_out_spin = QSpinBox()
-        self._mileage_out_spin.setRange(0, 9999999)
-        self._mileage_out_spin.setSuffix(" km")
-        self._mileage_out_spin.setFixedHeight(INPUT_HEIGHT)
-
-        # Pre-fill mileage out if exists
-        if job_card.mileage_out is not None:
-            self._mileage_out_spin.setValue(job_card.mileage_out)
-
-        form.addRow("Mileage Out:", self._mileage_out_spin)
-
-        layout.addLayout(form)
-
-        # Info label
-        info_label = QLabel("Mileage Out is typically set when status changes to COMPLETED.")
-        info_label.setObjectName("secondary")
-        info_label.setStyleSheet(
-            f"font-size: {FONT_SMALL}px; color: {COLOR_TEXT_SECONDARY};"
+        self._status_combo = ttk.Combobox(
+            form, values=["PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"],
+            state="readonly", width=18,
         )
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
+        self._status_combo.set(job_card.status or "PENDING")
+        form.add_row("New Status:", self._status_combo)
 
         # Buttons
-        btn_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
-        )
-        btn_box.accepted.connect(self._on_save)
-        btn_box.rejected.connect(self.reject)
-        layout.addWidget(btn_box)
+        btn_frame = tk.Frame(outer, bg=COLOR_APP_BG)
+        btn_frame.pack(fill="x", pady=(SPACING_MD, 0))
+        tk.Frame(btn_frame, bg=COLOR_APP_BG).pack(side="left", fill="x", expand=True)
+        ttk.Button(btn_frame, text="Cancel", command=self._on_cancel,
+                    style="Secondary.TButton").pack(side="right", padx=(SPACING_SM, 0))
+        ttk.Button(btn_frame, text="Update", command=self._on_save,
+                    style="Primary.TButton").pack(side="right")
+
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 2
+        self.geometry(f"+{x}+{y}")
 
     def _on_save(self):
-        new_status = self._status_combo.currentText()
-        mileage_out = self._mileage_out_spin.value() or None
-
-        kwargs = {}
-        if mileage_out is not None:
-            kwargs["mileage_out"] = mileage_out
+        new_status = self._status_combo.get()
+        if new_status == self._job_card.status:
+            self.result = None
+            self.destroy()
+            return
 
         try:
-            result = self._jc_ctrl.update_status(
-                self._job_card.id,
-                new_status,
-                **kwargs,
-            )
-            if result:
-                self.accept()
-            else:
-                QMessageBox.critical(self, "Error", "Failed to update job card status.")
+            result = self._jc_ctrl.update_status(self._job_card.id, new_status)
+            self.result = result
         except Exception:
-            logger.exception("Error updating job card status")
-            QMessageBox.critical(self, "Error", "Failed to update status.")
+            logger.exception("Error updating status")
+            messagebox.showerror("Error", "Failed to update status.", parent=self)
+            self.result = None
+
+        self.destroy()
+
+    def _on_cancel(self):
+        self.result = None
+        self.destroy()
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  Inline Customer Creation Dialog
+#  Inline Customer Dialog
 # ═══════════════════════════════════════════════════════════════════
 
-class InlineCustomerDialog(QDialog):
-    """Compact dialog for quickly creating a new customer."""
+class InlineCustomerDialog(tk.Toplevel):
+    """Compact dialog to quickly create a customer."""
 
-    def __init__(self, cust_ctrl: CustomerController, parent=None):
-        super().__init__(parent)
+    def __init__(self, cust_ctrl, parent=None, **kwargs):
+        super().__init__(parent, **kwargs)
+
+        self.result = None
         self._cust_ctrl = cust_ctrl
-        self._created_customer = None
 
-        self.setWindowTitle("New Customer")
-        self.setMinimumWidth(400)
+        self.title("New Customer")
+        self.configure(bg=COLOR_APP_BG)
+        self.grab_set()
+        self.transient(parent)
+        self.minsize(380, 200)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
-        layout.setSpacing(SPACING_SM)
+        outer = tk.Frame(self, bg=COLOR_APP_BG, padx=SPACING_LG, pady=SPACING_LG)
+        outer.pack(fill="both", expand=True)
 
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        form.setHorizontalSpacing(SPACING_MD)
-        form.setVerticalSpacing(SPACING_XS)
+        form = FormPanel("Quick Add Customer", parent=outer)
 
-        self._name_edit = QLineEdit()
-        self._name_edit.setPlaceholderText("Full name")
-        self._name_edit.setFixedHeight(INPUT_HEIGHT)
-        form.addRow("Name *:", self._name_edit)
+        self._name_input = tk.Entry(form, font=(FONT_FAMILY, FONT_BODY))
+        form.add_row("Name *:", self._name_input)
 
-        self._phone_edit = QLineEdit()
-        self._phone_edit.setPlaceholderText("Phone number")
-        self._phone_edit.setFixedHeight(INPUT_HEIGHT)
-        form.addRow("Phone *:", self._phone_edit)
-
-        self._email_edit = QLineEdit()
-        self._email_edit.setPlaceholderText("Email (optional)")
-        self._email_edit.setFixedHeight(INPUT_HEIGHT)
-        form.addRow("Email:", self._email_edit)
-
-        self._address_edit = QLineEdit()
-        self._address_edit.setPlaceholderText("Address (optional)")
-        self._address_edit.setFixedHeight(INPUT_HEIGHT)
-        form.addRow("Address:", self._address_edit)
-
-        self._nic_edit = QLineEdit()
-        self._nic_edit.setPlaceholderText("NIC (optional)")
-        self._nic_edit.setFixedHeight(INPUT_HEIGHT)
-        form.addRow("NIC:", self._nic_edit)
-
-        layout.addLayout(form)
+        self._phone_input = tk.Entry(form, font=(FONT_FAMILY, FONT_BODY))
+        form.add_row("Phone *:", self._phone_input)
 
         # Buttons
-        btn_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
-        )
-        btn_box.accepted.connect(self._on_save)
-        btn_box.rejected.connect(self.reject)
-        layout.addWidget(btn_box)
+        btn_frame = tk.Frame(outer, bg=COLOR_APP_BG)
+        btn_frame.pack(fill="x", pady=(SPACING_MD, 0))
+        tk.Frame(btn_frame, bg=COLOR_APP_BG).pack(side="left", fill="x", expand=True)
+        ttk.Button(btn_frame, text="Cancel", command=self._on_cancel,
+                    style="Secondary.TButton").pack(side="right", padx=(SPACING_SM, 0))
+        ttk.Button(btn_frame, text="Create", command=self._on_save,
+                    style="Primary.TButton").pack(side="right")
+
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 2
+        self.geometry(f"+{x}+{y}")
 
     def _on_save(self):
-        name = self._name_edit.text().strip()
-        phone = self._phone_edit.text().strip()
-
+        name = self._name_input.get().strip()
+        phone = self._phone_input.get().strip()
         if not name:
-            QMessageBox.warning(self, "Validation", "Customer name is required.")
+            messagebox.showwarning("Validation", "Name is required.", parent=self)
             return
         if not phone:
-            QMessageBox.warning(self, "Validation", "Phone number is required.")
+            messagebox.showwarning("Validation", "Phone is required.", parent=self)
             return
 
-        kwargs = {}
-        email = self._email_edit.text().strip()
-        if email:
-            kwargs["email"] = email
-        address = self._address_edit.text().strip()
-        if address:
-            kwargs["address"] = address
-        nic = self._nic_edit.text().strip()
-        if nic:
-            kwargs["nic"] = nic
+        customer = self._cust_ctrl.create_customer(name=name, phone=phone)
+        self.result = customer
+        self.destroy()
 
-        try:
-            self._created_customer = self._cust_ctrl.create_customer(
-                name=name, phone=phone, **kwargs
-            )
-            if self._created_customer:
-                self.accept()
-            else:
-                QMessageBox.critical(self, "Error", "Failed to create customer.")
-        except Exception:
-            logger.exception("Error creating customer")
-            QMessageBox.critical(self, "Error", "Failed to create customer.")
-
-    def get_created_customer(self):
-        return self._created_customer
+    def _on_cancel(self):
+        self.result = None
+        self.destroy()
