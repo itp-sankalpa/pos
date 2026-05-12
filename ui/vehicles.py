@@ -433,9 +433,9 @@ class VehicleDialog(QDialog):
         # Year
         self._year_spin = QSpinBox()
         self._year_spin.setRange(1900, 2030)
-        self._year_spin.setPlaceholderText("Year")
+        self._year_spin.setValue(2024)
         self._year_spin.setFixedHeight(INPUT_HEIGHT)
-        self._year_spin.setSpecialValueText(" ")
+        self._year_spin.setPrefix("")
         form.add_row("Year", self._year_spin)
 
         # Color
@@ -461,9 +461,9 @@ class VehicleDialog(QDialog):
         # Mileage
         self._mileage_spin = QSpinBox()
         self._mileage_spin.setRange(0, 9_999_999)
-        self._mileage_spin.setPlaceholderText("Mileage (km)")
+        self._mileage_spin.setValue(0)
         self._mileage_spin.setFixedHeight(INPUT_HEIGHT)
-        self._mileage_spin.setSpecialValueText("0")
+        self._mileage_spin.setSuffix(" km")
         form.add_row("Mileage", self._mileage_spin)
 
         # Notes
